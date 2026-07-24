@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.turbo/
+.next/
+coverage/
+generated/
+*.tsbuildinfo
+*.log
+
+# secrets never enter the repo — .env.example carries names + generators only
+.env
+.env.*
+!.env.example
