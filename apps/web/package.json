@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev -p 3100",
-    "start": "next start -p 3100",
+    "dev": "next dev -p 3200",
+    "start": "next start -p 3200",
     "test": "vitest run --passWithNoTests",
     "lint": "eslint app lib"
   },

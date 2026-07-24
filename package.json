@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "dev": "turbo run dev",
     "test": "turbo run test && vitest run --dir scripts",
     "lint": "turbo run lint && node scripts/security-lint.mjs",
     "security-lint": "node scripts/security-lint.mjs",
