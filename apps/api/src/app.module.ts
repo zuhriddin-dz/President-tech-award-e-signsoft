@@ -1,13 +1,22 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
+import { ClerkService } from './auth/clerk.service.js';
 import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { PolicyGuard } from './common/policy.js';
 import { env } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
+import { MeController } from './modules/me/me.controller.js';
+import { PrismaService } from './prisma/prisma.service.js';
+import { TenantContext } from './tenant/tenant-context.js';
+import { TenantDb } from './tenant/tenant-db.js';
+import { TenantSyncService } from './tenant/tenant-sync.service.js';
 
 @Module({
   imports: [
+    // One CLS store per request — the vehicle for tenant context.
+    ClsModule.forRoot({ global: true, middleware: { mount: true } }),
     LoggerModule.forRoot({
       pinoHttp: {
         level: env.NODE_ENV === 'production' ? 'info' : 'debug',
@@ -28,8 +37,13 @@ import { HealthController } from './health/health.controller.js';
       },
     }),
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, MeController],
   providers: [
+    ClerkService,
+    PrismaService,
+    TenantContext,
+    TenantDb,
+    TenantSyncService,
     // Global default-deny: every route must carry @Policy() or it is refused.
     { provide: APP_GUARD, useClass: PolicyGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

@@ -1,32 +1,62 @@
-import { ForbiddenException, Injectable, SetMetadata } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  SetMetadata,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import type { Request } from 'express';
+import { roleSatisfies } from '../auth/claims.js';
+import { ClerkService } from '../auth/clerk.service.js';
+import { TenantSyncService } from '../tenant/tenant-sync.service.js';
 
 export const POLICY_KEY = 'docflow:policy';
 
 /**
  * Every route MUST declare a policy — the guard denies anything undeclared.
- * 'public' is the only policy that exists in Phase 2; authenticated policies
- * arrive with Clerk in Phase 3 and extend this union.
+ * 'public'  — no auth at all (health, future /sign relay endpoints).
+ * role names — verified Clerk session with an active org; the member's role
+ *              must satisfy the named minimum (viewer < member < admin < owner).
  */
-export type PolicyName = 'public';
+export type PolicyName = 'public' | 'viewer' | 'member' | 'admin' | 'owner';
+
+const MIN_ROLE = {
+  viewer: 'VIEWER',
+  member: 'MEMBER',
+  admin: 'ADMIN',
+  owner: 'OWNER',
+} as const;
 
 export const Policy = (name: PolicyName) => SetMetadata(POLICY_KEY, name);
 
 @Injectable()
 export class PolicyGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly clerk: ClerkService,
+    private readonly sync: TenantSyncService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const policy = this.reflector.getAllAndOverride<PolicyName | undefined>(POLICY_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    // Default deny: a route someone forgot to classify is a closed door,
-    // not an open one.
+    // Default deny: a route someone forgot to classify is a closed door.
     if (policy === undefined) throw new ForbiddenException();
     if (policy === 'public') return true;
-    // Unknown/future policies fail closed until their auth layer exists.
-    throw new ForbiddenException();
+
+    const required = MIN_ROLE[policy as keyof typeof MIN_ROLE];
+    if (!required) throw new ForbiddenException(); // unknown policy: fail closed
+
+    const header = context.switchToHttp().getRequest<Request>().headers.authorization;
+    const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
+    if (!token) throw new UnauthorizedException();
+
+    const identity = await this.clerk.verifyBearer(token);
+    const auth = await this.sync.establish(identity); // enters tenant context
+    if (!roleSatisfies(auth.role, required)) throw new ForbiddenException();
+    return true;
   }
 }

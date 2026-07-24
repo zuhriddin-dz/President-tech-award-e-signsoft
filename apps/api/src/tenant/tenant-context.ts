@@ -1,0 +1,41 @@
+import { Injectable } from '@nestjs/common';
+import { ClsService } from 'nestjs-cls';
+import type { MembershipRole } from '@docflow/db';
+
+/**
+ * apps/api/src/tenant/ — THE sanctioned tenant territory (security-lint
+ * exempts exactly this folder). Tenant identity enters request context here
+ * and only here, always derived from a VERIFIED session token upstream.
+ * Everything else reads it via the getters; nothing outside this folder may
+ * take a tenantId parameter or read one from client data.
+ */
+
+export interface RequestAuth {
+  userId: string; // our users.id
+  clerkUserId: string;
+  tenantId: string; // our tenants.id
+  role: MembershipRole;
+}
+
+const AUTH_KEY = 'docflow:auth';
+
+@Injectable()
+export class TenantContext {
+  constructor(private readonly cls: ClsService) {}
+
+  /** The ONE writer. Called by the policy guard after verification + sync. */
+  enter(auth: RequestAuth): void {
+    this.cls.set(AUTH_KEY, auth);
+  }
+
+  auth(): RequestAuth | null {
+    return this.cls.get<RequestAuth | null>(AUTH_KEY) ?? null;
+  }
+
+  /** Fail-closed accessor: throws when no tenant context exists. */
+  requireAuth(): RequestAuth {
+    const auth = this.auth();
+    if (!auth) throw new Error('No tenant context on this request');
+    return auth;
+  }
+}

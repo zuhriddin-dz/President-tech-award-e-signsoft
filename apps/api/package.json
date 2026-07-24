@@ -14,10 +14,13 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@clerk/backend": "3.13.1",
+    "@docflow/db": "workspace:*",
     "@nestjs/common": "11.1.28",
     "@nestjs/core": "11.1.28",
     "@nestjs/platform-express": "11.1.28",
     "helmet": "8.3.0",
+    "nestjs-cls": "6.2.1",
     "nestjs-pino": "4.6.1",
     "pino": "10.3.1",
     "pino-http": "11.0.0",

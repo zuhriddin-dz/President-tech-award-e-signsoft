@@ -8,6 +8,11 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    env:
+      # Dummy values so env contracts parse; integration specs skip themselves
+      # when the database is not a real Neon instance.
+      CLERK_SECRET_KEY: sk_test_ci_dummy_0000000000
+      APP_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v4
 

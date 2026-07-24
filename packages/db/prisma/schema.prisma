@@ -26,6 +26,7 @@ enum MembershipRole {
 model Tenant {
   id          String       @id @default(uuid()) @db.Uuid
   name        String
+  clerkOrgId  String?      @unique @map("clerk_org_id")
   createdAt   DateTime     @default(now()) @map("created_at")
   memberships Membership[]
 
@@ -38,6 +39,7 @@ model Tenant {
 model User {
   id          String       @id @default(uuid()) @db.Uuid
   email       String       @unique
+  clerkUserId String?      @unique @map("clerk_user_id")
   createdAt   DateTime     @default(now()) @map("created_at")
   memberships Membership[]
 
