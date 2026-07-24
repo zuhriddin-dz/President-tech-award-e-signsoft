@@ -17,10 +17,20 @@ export async function apiGet<S extends z.ZodType>(
   const token = await getToken();
   if (!token) return null;
 
-  const res = await fetch(new URL(path, API_ORIGIN), {
-    headers: { authorization: `Bearer ${token}` },
-    cache: 'no-store',
-  });
-  if (!res.ok) return null;
+  let res: Response;
+  try {
+    res = await fetch(new URL(path, API_ORIGIN), {
+      headers: { authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+  } catch (cause) {
+    console.error(`[api] ${path} unreachable at ${API_ORIGIN}:`, cause);
+    return null;
+  }
+  if (!res.ok) {
+    // Server-side log only — the page shows a friendly state, never the status.
+    console.error(`[api] ${path} -> ${res.status}`);
+    return null;
+  }
   return schema.parse(await res.json()) as z.infer<S>;
 }

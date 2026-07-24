@@ -32,9 +32,14 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           {me?.tenant ? me.tenant.name : 'Dashboard'}
         </h1>
-        {me && (
+        {me ? (
           <p className="mt-1 text-sm text-ink-muted">
             Your role: <span className="font-medium text-ink">{me.role}</span>
+          </p>
+        ) : (
+          <p className="mt-1 text-sm text-warning">
+            Workspace data is unavailable right now — if this persists, make sure the API is
+            running, then refresh.
           </p>
         )}
       </div>
