@@ -18,6 +18,13 @@ const envSchema = z.object({
   CLERK_SECRET_KEY: z.string().min(20),
   // Runtime role over the pooled host — never neondb_owner (BYPASSRLS).
   APP_DATABASE_URL: z.string().startsWith('postgresql://'),
+  // R2 (S3 API) — private bucket, token scoped to it alone.
+  S3_ENDPOINT: z.url(),
+  S3_BUCKET: z.string().min(1),
+  S3_ACCESS_KEY_ID: z.string().min(1),
+  S3_SECRET_ACCESS_KEY: z.string().min(1),
+  // BullMQ backend (redis:// locally, rediss:// on Upstash).
+  REDIS_URL: z.string().startsWith('redis'),
 });
 
 export type Env = z.infer<typeof envSchema>;

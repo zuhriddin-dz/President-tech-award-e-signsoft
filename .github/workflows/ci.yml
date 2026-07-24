@@ -13,6 +13,11 @@ jobs:
       # when the database is not a real Neon instance.
       CLERK_SECRET_KEY: sk_test_ci_dummy_0000000000
       APP_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      S3_ENDPOINT: https://ci.invalid
+      S3_BUCKET: ci
+      S3_ACCESS_KEY_ID: ci
+      S3_SECRET_ACCESS_KEY: ci
+      REDIS_URL: redis://127.0.0.1:6390/0
     steps:
       - uses: actions/checkout@v4
 

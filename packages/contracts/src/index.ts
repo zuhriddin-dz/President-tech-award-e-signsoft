@@ -24,6 +24,20 @@ export type MeResponse = z.infer<typeof MeResponseSchema>;
 export const API_PATHS = {
   health: '/health',
   me: '/me',
+  documents: '/documents',
 } as const;
+
+export const DocumentSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  contentType: z.string(),
+  byteSize: z.number().int().nonnegative(),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  createdAt: z.iso.datetime(),
+});
+export type Document = z.infer<typeof DocumentSchema>;
+
+export const DocumentListSchema = z.object({ documents: z.array(DocumentSchema) });
+export type DocumentList = z.infer<typeof DocumentListSchema>;
 
 export const PACKAGE_NAME = '@docflow/contracts' as const;

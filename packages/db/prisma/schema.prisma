@@ -46,6 +46,23 @@ model User {
   @@map("users")
 }
 
+// Uploaded source PDFs. Bytes live in R2 under tenants/<tenant_id>/…;
+// this row is the metadata + pointer. Template fields arrive in Phase 7a.
+model Document {
+  id          String   @id @default(uuid()) @db.Uuid
+  // Defaults to the RLS context in the DB — creates never name a tenant.
+  tenantId    String   @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
+  name        String
+  contentType String   @map("content_type")
+  byteSize    Int      @map("byte_size")
+  sha256      String
+  storageKey  String   @unique @map("storage_key")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@map("documents")
+}
+
 model Membership {
   id        String         @id @default(uuid()) @db.Uuid
   tenantId  String         @map("tenant_id") @db.Uuid

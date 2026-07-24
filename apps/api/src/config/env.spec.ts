@@ -4,6 +4,11 @@ import { parseEnv } from './env.js';
 const REQUIRED = {
   CLERK_SECRET_KEY: 'sk_test_xxxxxxxxxxxxxxxxxxxxx',
   APP_DATABASE_URL: 'postgresql://docflow_app:pw@host/db',
+  S3_ENDPOINT: 'https://acc.r2.example',
+  S3_BUCKET: 'bucket',
+  S3_ACCESS_KEY_ID: 'key',
+  S3_SECRET_ACCESS_KEY: 'secret',
+  REDIS_URL: 'redis://127.0.0.1:6379/0',
 };
 
 describe('env contract', () => {
