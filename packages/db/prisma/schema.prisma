@@ -1,0 +1,59 @@
+// DocFlow — ONE shared-schema database for all tenants.
+// Every tenant-owned table carries tenant_id and an RLS policy (added in
+// migration SQL — Prisma can't express RLS, so policies live in migrations
+// and rls.spec.ts proves them against the real server).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Direct (non-pooler) URL: migrations need an exclusive session.
+  // Runtime clients pass the POOLED url via datasourceUrl.
+  url      = env("DATABASE_URL")
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+
+  @@map("membership_role")
+}
+
+model Tenant {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String
+  createdAt   DateTime     @default(now()) @map("created_at")
+  memberships Membership[]
+
+  @@map("tenants")
+}
+
+// Global identity — one row per person, shared across their tenants.
+// NOT tenant-scoped by design; tenant-facing reads always go through
+// memberships. Clerk linkage columns arrive in Phase 3.
+model User {
+  id          String       @id @default(uuid()) @db.Uuid
+  email       String       @unique
+  createdAt   DateTime     @default(now()) @map("created_at")
+  memberships Membership[]
+
+  @@map("users")
+}
+
+model Membership {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @map("tenant_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  role      MembershipRole
+  createdAt DateTime       @default(now()) @map("created_at")
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@index([userId])
+  @@map("memberships")
+}
