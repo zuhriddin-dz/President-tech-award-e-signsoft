@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   const me = await apiGet(API_PATHS.me, MeResponseSchema);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           {me?.tenant ? me.tenant.name : 'Dashboard'}
