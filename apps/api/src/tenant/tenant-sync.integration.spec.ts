@@ -63,6 +63,30 @@ describe.skipIf(!live)('tenant sync + RLS end to end (Neon)', () => {
     });
   });
 
+  it('concurrent first requests from a brand-new org do not race (ON CONFLICT)', async () => {
+    const raceOrg = `org_race_${Date.now().toString(36)}`;
+    const identity = {
+      clerkUserId: `user_race_${suffix}`,
+      email: `race-${suffix}@itest.docflow.invalid`,
+      clerkOrgId: raceOrg,
+      orgName: 'Race Org',
+      role: 'ADMIN' as const,
+    };
+    // Two parallel establishes, each in its own CLS scope — the exact shape of
+    // a fresh signup firing /me and /documents at once. Old code 500'd here.
+    const results = await Promise.all([
+      cls.run(() => sync.establish(identity)),
+      cls.run(() => sync.establish(identity)),
+    ]);
+    expect(results[0].tenantId).toBe(results[1].tenantId);
+
+    await cls.run(async () => {
+      context.enter(results[0]);
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { clerkOrgId: raceOrg } }));
+      await prisma.user.deleteMany({ where: { clerkUserId: identity.clerkUserId } });
+    });
+  });
+
   it('refuses a session with no active organization', async () => {
     await cls.run(async () => {
       await expect(
