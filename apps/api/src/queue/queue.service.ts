@@ -14,7 +14,10 @@ export class QueueService implements OnModuleDestroy {
    * Enqueue with an idempotency key: BullMQ dedupes on jobId, so the same
    * logical work enqueued twice (retryable webhooks, double submits) runs
    * once. Callers ALWAYS pass a deterministic id derived from the work
-   * ("invite:<requestId>"), never a random one.
+   * ("invite-<requestId>"), never a random one.
+   *
+   * BullMQ forbids ':' in a custom job id — reject it here with a clear error
+   * instead of letting it surface deep in the driver at send time.
    */
   async enqueue(
     name: string,
@@ -22,6 +25,9 @@ export class QueueService implements OnModuleDestroy {
     idempotencyKey: string,
     options?: EnqueueOptions,
   ) {
+    if (idempotencyKey.includes(':')) {
+      throw new Error(`enqueue: idempotency key must not contain ':' (got "${idempotencyKey}")`);
+    }
     await this.queue.add(name, payload, { jobId: idempotencyKey, ...options });
   }
 

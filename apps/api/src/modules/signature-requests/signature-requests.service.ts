@@ -74,7 +74,8 @@ export class SignatureRequestsService {
       senderName,
       signUrl: `${env.SIGN_APP_URL}/sign/${token}`,
     };
-    await this.queue.enqueue(INVITE_JOB, { ...job }, `invite:${row.id}`, {
+    // Hyphen, not colon — BullMQ custom job ids may not contain ':'.
+    await this.queue.enqueue(INVITE_JOB, { ...job }, `invite-${row.id}`, {
       removeOnComplete: true,
       removeOnFail: true,
     });

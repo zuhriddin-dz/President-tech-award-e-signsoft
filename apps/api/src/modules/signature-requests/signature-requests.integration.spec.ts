@@ -27,10 +27,13 @@ const db = new TenantDb(prisma, context);
 const documents = new DocumentsService(db, storage);
 const templates = new TemplatesService(db, documents);
 
-// Fake queue: record enqueues instead of touching Redis.
+// Fake queue: record enqueues instead of touching Redis. Enforces BullMQ's
+// real constraint (no ':' in a custom job id) so that class of bug can't slip
+// past the fake and only fail in production.
 const enqueued: { name: string; payload: Record<string, unknown>; key: string }[] = [];
 const fakeQueue = {
   enqueue: async (name: string, payload: Record<string, unknown>, key: string) => {
+    if (key.includes(':')) throw new Error(`Custom Id cannot contain : (got "${key}")`);
     enqueued.push({ name, payload, key });
   },
 } as unknown as import('../../queue/queue.service.js').QueueService;
@@ -88,7 +91,7 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
 
       // One invite enqueued, keyed idempotently by request id.
       expect(enqueued).toHaveLength(1);
-      expect(enqueued[0]?.key).toBe(`invite:${req.id}`);
+      expect(enqueued[0]?.key).toBe(`invite-${req.id}`);
       const signUrl = enqueued[0]?.payload.signUrl as string;
       const rawToken = signUrl.split('/sign/')[1];
       expect(rawToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
