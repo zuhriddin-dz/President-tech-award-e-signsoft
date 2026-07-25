@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ClerkProvider, OrganizationSwitcher, UserButton } from '@clerk/nextjs';
 import { auth } from '@clerk/nextjs/server';
+import { Button } from '@/components/ui/primitives';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,7 +15,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const { userId } = await auth();
 
   return (
-    <ClerkProvider>
+    <ClerkProvider signInFallbackRedirectUrl="/dashboard" signUpFallbackRedirectUrl="/dashboard">
       <html lang="en">
         <body className="min-h-screen">
           <header className="flex items-center justify-between border-b border-border bg-surface px-6 py-3">
@@ -24,7 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </Link>
               {userId && (
                 <nav className="flex items-center gap-3 text-sm text-ink-muted">
-                  <Link href="/" className="hover:text-ink">
+                  <Link href="/dashboard" className="hover:text-ink">
                     Dashboard
                   </Link>
                   <Link href="/templates" className="hover:text-ink">
@@ -34,13 +35,24 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               )}
               {userId && (
                 <OrganizationSwitcher
-                  afterCreateOrganizationUrl="/"
-                  afterSelectOrganizationUrl="/"
+                  afterCreateOrganizationUrl="/dashboard"
+                  afterSelectOrganizationUrl="/dashboard"
                   hidePersonal
                 />
               )}
             </div>
-            {userId && <UserButton />}
+            {userId ? (
+              <UserButton />
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link href="/sign-in" className="text-sm text-ink-muted hover:text-ink">
+                  Sign in
+                </Link>
+                <Link href="/sign-up">
+                  <Button>Get started</Button>
+                </Link>
+              </div>
+            )}
           </header>
           {/* No width constraint here — each page owns its container so the
               editor can go full-bleed while content pages stay centered. */}
