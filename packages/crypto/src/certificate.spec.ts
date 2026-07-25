@@ -40,6 +40,13 @@ describe('buildCertificatePdf', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
   });
 
+  it('does not throw on an Invalid Date — treats it as missing', async () => {
+    // An Invalid Date is truthy; without the guard, fmt() -> toISOString() throws
+    // RangeError on the signing path and wedges the token.
+    const pdf = await buildCertificatePdf({ ...base, viewedAt: new Date('not-a-date') });
+    expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
   it('renders with all-null optional fields (signed via secure link, no account)', async () => {
     const minimal: CertificateInput = {
       ...base,

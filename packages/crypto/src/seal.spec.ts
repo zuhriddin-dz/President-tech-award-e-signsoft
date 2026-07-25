@@ -76,6 +76,15 @@ describe('SealService', () => {
     expect(() => new SealService([key('dup'), key('dup', 'retiring')])).toThrow(/duplicate/);
     expect(() => new SealService([key('only', 'retiring')])).toThrow(/active/);
   });
+
+  it('fails closed at boot on a non-Ed25519 key (wrong-type footgun)', () => {
+    const rsaPem = generateKeyPairSync('rsa', { modulusLength: 2048 })
+      .privateKey.export({ type: 'pkcs8', format: 'pem' })
+      .toString();
+    expect(() => new SealService([{ kid: 'rsa-1', privateKeyPkcs8Pem: rsaPem, state: 'active' }])).toThrow(
+      /Ed25519/,
+    );
+  });
 });
 
 describe('parseSealRing', () => {

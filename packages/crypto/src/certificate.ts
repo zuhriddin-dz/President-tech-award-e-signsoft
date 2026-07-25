@@ -41,7 +41,11 @@ const PAGE_W = 595.28; // A4 portrait, points
 const PAGE_H = 841.89;
 
 function fmt(d: Date | null): string {
-  return d ? d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC') : '—';
+  // An Invalid Date is truthy but d.toISOString() throws RangeError — and a
+  // throw on the signing path wedges the token this whole module guards. Treat
+  // it as missing, exactly like null.
+  if (!d || Number.isNaN(d.getTime())) return '—';
+  return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
 }
 
 /** Break a long spaceless value (hash, base64 seal, UA) across lines. */

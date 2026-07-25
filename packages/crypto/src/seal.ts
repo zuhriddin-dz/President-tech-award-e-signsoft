@@ -33,6 +33,8 @@ export const sealKeySchema = z.object({
   kid: z.string().min(1),
   privateKeyPkcs8Pem: z.string().includes('PRIVATE KEY'),
   state: z.enum(['active', 'retiring']),
+  // Optional metadata (kept for tms-ring compatibility); not used in signing.
+  createdAt: z.string().optional(),
 });
 export type SealKey = z.infer<typeof sealKeySchema>;
 
@@ -64,6 +66,12 @@ export class SealService {
         throw new Error(`seal ring: duplicate kid "${entry.kid}"`);
       }
       const privateKey = createPrivateKey(entry.privateKeyPkcs8Pem);
+      // Fail closed at boot on a wrong key type — otherwise a misconfigured
+      // RSA/EC key is accepted here and only blows up at seal() time (and the
+      // certificate would mislabel the algorithm). Ed25519 is the contract.
+      if (privateKey.asymmetricKeyType !== 'ed25519') {
+        throw new Error(`seal ring: key "${entry.kid}" is not Ed25519`);
+      }
       this.entries.set(entry.kid, {
         privateKey,
         // Derived from the private half — one fewer secret-adjacent input to get wrong.
