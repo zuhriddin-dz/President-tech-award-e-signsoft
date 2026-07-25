@@ -54,12 +54,11 @@ export class PolicyGuard implements CanActivate {
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
     if (!token) throw new UnauthorizedException();
     const identity = await this.clerk.verifyBearer(token);
+    // Available to every authenticated handler (sender name, email, etc.).
+    this.tenantContext.setIdentity(identity);
 
     // 'session': verified user, no workspace yet — onboarding routes only.
-    if (policy === 'session') {
-      this.tenantContext.setIdentity(identity);
-      return true;
-    }
+    if (policy === 'session') return true;
 
     const required = MIN_ROLE[policy as keyof typeof MIN_ROLE];
     if (!required) throw new ForbiddenException(); // unknown policy: fail closed

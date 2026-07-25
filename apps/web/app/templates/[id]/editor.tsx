@@ -7,6 +7,7 @@ import { FIELD_CATALOG, FIELD_GROUPS, FIELD_META } from '@/lib/field-catalog';
 import { documentPdfUrl, updateTemplate } from '@/lib/client';
 import { usePdf } from '@/lib/use-pdf';
 import { PdfPage } from './pdf-page';
+import { SendDialog } from './send-dialog';
 
 /** A field as the editor holds it — the contract shape plus a client id. */
 export interface EditorField {
@@ -31,6 +32,7 @@ export function TemplateEditor({ template }: { template: Template }) {
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [showSend, setShowSend] = useState(false);
 
   const addField = useCallback((type: FieldType, page: number, x: number, y: number) => {
     const meta = FIELD_META[type];
@@ -62,7 +64,7 @@ export function TemplateEditor({ template }: { template: Template }) {
     setSelectedId(null);
   }, [selectedId]);
 
-  async function save() {
+  async function save(): Promise<boolean> {
     setSaveState('saving');
     try {
       await updateTemplate(template.id, {
@@ -81,9 +83,16 @@ export function TemplateEditor({ template }: { template: Template }) {
       });
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 1500);
+      return true;
     } catch {
       setSaveState('error');
+      return false;
     }
+  }
+
+  // Send snapshots the SERVER's fields, so persist the editor state first.
+  async function saveThenSend() {
+    if (await save()) setShowSend(true);
   }
 
   const pages = useMemo(
@@ -108,11 +117,22 @@ export function TemplateEditor({ template }: { template: Template }) {
         <div className="flex items-center gap-3">
           {saveState === 'saved' && <span className="text-sm text-success">Saved</span>}
           {saveState === 'error' && <span className="text-sm text-danger">Save failed</span>}
-          <Button onClick={save} disabled={saveState === 'saving'}>
+          <Button variant="ghost" onClick={save} disabled={saveState === 'saving'}>
             {saveState === 'saving' ? 'Saving…' : 'Save'}
+          </Button>
+          <Button onClick={saveThenSend} disabled={saveState === 'saving' || fields.length === 0}>
+            Send
           </Button>
         </div>
       </div>
+
+      {showSend && (
+        <SendDialog
+          templateId={template.id}
+          hasFields={fields.length > 0}
+          onClose={() => setShowSend(false)}
+        />
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* Left: field palette */}

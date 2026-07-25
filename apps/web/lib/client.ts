@@ -1,8 +1,13 @@
 'use client';
 import {
   API_PATHS,
+  SignatureRequestListSchema,
+  SignatureRequestSchema,
   TemplateListSchema,
   TemplateSchema,
+  type SendRequest,
+  type SignatureRequest,
+  type SignatureRequestList,
   type Template,
   type TemplateList,
   type TemplateUpdate,
@@ -45,6 +50,20 @@ export async function updateTemplate(id: string, patch: TemplateUpdate): Promise
       body: JSON.stringify(patch),
     }),
   );
+}
+
+export async function sendSignatureRequest(input: SendRequest): Promise<SignatureRequest> {
+  return SignatureRequestSchema.parse(
+    await req(API_PATHS.signatureRequests, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  );
+}
+
+export async function listSignatureRequests(): Promise<SignatureRequestList> {
+  return SignatureRequestListSchema.parse(await req(API_PATHS.signatureRequests));
 }
 
 /** The document PDF bytes, streamed through the BFF (authenticated, same-origin). */

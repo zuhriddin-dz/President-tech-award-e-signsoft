@@ -10,6 +10,9 @@ const REQUIRED = {
   S3_SECRET_ACCESS_KEY: 'secret',
   REDIS_URL: 'redis://127.0.0.1:6379/0',
   ESIGN_SEAL_KEYS: '[{"kid":"t","privateKeyPkcs8Pem":"x","state":"active"}]',
+  RESEND_API_KEY: 're_test',
+  EMAIL_FROM: 'DocFlow <onboarding@resend.dev>',
+  SIGN_APP_URL: 'http://localhost:3300',
 };
 
 describe('env contract', () => {

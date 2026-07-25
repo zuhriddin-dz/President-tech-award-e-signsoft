@@ -29,8 +29,40 @@ export const API_PATHS = {
   me: '/me',
   documents: '/documents',
   templates: '/templates',
+  signatureRequests: '/signature-requests',
   onboardingPersonal: '/onboarding/personal',
 } as const;
+
+// ── Signature requests (send flow) ──────────────────────────────────────────
+
+export const SignatureStatusSchema = z.enum(['sent', 'viewed', 'completed', 'voided']);
+export type SignatureStatus = z.infer<typeof SignatureStatusSchema>;
+
+/** Create a signature request from a template + one recipient. */
+export const SendRequestSchema = z.object({
+  templateId: z.uuid(),
+  recipientEmail: z.email(),
+  recipientName: z.string().min(1).max(200).optional(),
+});
+export type SendRequest = z.infer<typeof SendRequestSchema>;
+
+export const SignatureRequestSchema = z.object({
+  id: z.uuid(),
+  documentName: z.string(),
+  recipientEmail: z.email(),
+  recipientName: z.string().nullable(),
+  status: SignatureStatusSchema,
+  sentAt: z.iso.datetime(),
+  viewedAt: z.iso.datetime().nullable(),
+  completedAt: z.iso.datetime().nullable(),
+  expiresAt: z.iso.datetime(),
+});
+export type SignatureRequest = z.infer<typeof SignatureRequestSchema>;
+
+export const SignatureRequestListSchema = z.object({
+  requests: z.array(SignatureRequestSchema),
+});
+export type SignatureRequestList = z.infer<typeof SignatureRequestListSchema>;
 
 // ── Templates & field layout ────────────────────────────────────────────────
 

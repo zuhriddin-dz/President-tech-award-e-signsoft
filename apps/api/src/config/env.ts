@@ -29,6 +29,13 @@ const envSchema = z.object({
   // separate from auth keys, exactly one active. Validated deeply by
   // parseSealRing() where SealService is constructed.
   ESIGN_SEAL_KEYS: z.string().min(1),
+  // Transactional email (Resend now; SES later behind the same interface).
+  RESEND_API_KEY: z.string().min(1),
+  EMAIL_FROM: z.string().min(3),
+  // Public signing app origin — the base of every invite link.
+  SIGN_APP_URL: z.url(),
+  // Signing-link lifetime in days.
+  ESIGN_LINK_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
 });
 
 export type Env = z.infer<typeof envSchema>;

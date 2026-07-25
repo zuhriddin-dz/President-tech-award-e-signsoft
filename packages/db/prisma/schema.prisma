@@ -69,12 +69,52 @@ model Document {
   contentType String     @map("content_type")
   byteSize    Int        @map("byte_size")
   sha256      String
-  storageKey  String     @unique @map("storage_key")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  templates   Template[]
+  storageKey        String             @unique @map("storage_key")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  templates         Template[]
+  signatureRequests SignatureRequest[]
 
   @@index([tenantId, createdAt])
   @@map("documents")
+}
+
+// Lifecycle of one signature request. `completed` is terminal-success;
+// `voided` is terminal-cancel. Proof fields fill in on completion (Phase 10).
+enum SignatureStatus {
+  sent
+  viewed
+  completed
+  voided
+
+  @@map("signature_status")
+}
+
+// One document sent to one signer. The source document + field layout are
+// SNAPSHOTTED here at send time, so later template edits never change an
+// in-flight request. The signing token is stored HASHED only; the raw value
+// travels once, in the invite link.
+model SignatureRequest {
+  id               String          @id @default(uuid()) @db.Uuid
+  tenantId         String          @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
+  templateId       String?         @map("template_id") @db.Uuid
+  documentId       String          @map("document_id") @db.Uuid
+  document         Document        @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  documentName     String          @map("document_name")
+  // Snapshot of the template's field layout at send time (contract shape).
+  fields           Json
+  recipientEmail   String          @map("recipient_email")
+  recipientName    String?         @map("recipient_name")
+  // sha256 of the signing token — the only form stored, unique for lookup.
+  signingTokenHash String          @unique @map("signing_token_hash")
+  status           SignatureStatus @default(sent)
+  createdByUserId  String          @map("created_by_user_id") @db.Uuid
+  expiresAt        DateTime        @map("expires_at")
+  sentAt           DateTime        @default(now()) @map("sent_at")
+  viewedAt         DateTime?       @map("viewed_at")
+  completedAt      DateTime?       @map("completed_at")
+
+  @@index([tenantId, status, sentAt])
+  @@map("signature_requests")
 }
 
 // A reusable signable document: a source Document + a field layout.
