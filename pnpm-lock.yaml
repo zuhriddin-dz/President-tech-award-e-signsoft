@@ -38,6 +38,9 @@ importers:
       '@clerk/backend':
         specifier: 3.13.1
         version: 3.13.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@docflow/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@docflow/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
@@ -65,6 +68,9 @@ importers:
       nestjs-pino:
         specifier: 4.6.1
         version: 4.6.1(@nestjs/common@11.1.28(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
+      pdf-lib:
+        specifier: 1.17.1
+        version: 1.17.1
       pino:
         specifier: 10.3.1
         version: 10.3.1

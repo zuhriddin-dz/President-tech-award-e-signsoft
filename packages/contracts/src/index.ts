@@ -25,7 +25,90 @@ export const API_PATHS = {
   health: '/health',
   me: '/me',
   documents: '/documents',
+  templates: '/templates',
 } as const;
+
+// ── Templates & field layout ────────────────────────────────────────────────
+
+/**
+ * The 12 field types (DocuSign-aligned). Signature/initial/stamp are drawn
+ * marks; date/name/…/title auto-fill from the signer; text/checkbox are inputs.
+ */
+export const FieldTypeSchema = z.enum([
+  'signature',
+  'initial',
+  'stamp',
+  'date',
+  'name',
+  'first_name',
+  'last_name',
+  'email',
+  'company',
+  'title',
+  'text',
+  'checkbox',
+]);
+export type FieldType = z.infer<typeof FieldTypeSchema>;
+
+const fraction = z.number().min(0).max(1);
+
+/**
+ * One placed field. Coordinates are NORMALIZED fractions of the page, TOP-LEFT
+ * origin (x,y = the field's top-left corner; w,h = size) — resolution- and
+ * zoom-independent. The stamper converts to PDF's bottom-left origin.
+ * `recipientKey` groups fields per recipient (single "signer" until Phase B).
+ */
+export const TemplateFieldSchema = z
+  .object({
+    id: z.uuid(),
+    type: FieldTypeSchema,
+    page: z.number().int().min(1),
+    x: fraction,
+    y: fraction,
+    w: fraction.min(0.005),
+    h: fraction.min(0.005),
+    required: z.boolean().default(true),
+    recipientKey: z.string().min(1).max(64).default('signer'),
+    label: z.string().max(200).optional(),
+  })
+  .refine((f) => f.x + f.w <= 1.0001 && f.y + f.h <= 1.0001, {
+    message: 'field extends past the page bounds',
+  });
+export type TemplateField = z.infer<typeof TemplateFieldSchema>;
+
+export const TemplateFieldsSchema = z.array(TemplateFieldSchema).max(500);
+
+export const PageSizeSchema = z.object({ w: z.number().positive(), h: z.number().positive() });
+
+export const TemplateSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  documentId: z.uuid(),
+  pageCount: z.number().int().positive(),
+  pageSizes: z.array(PageSizeSchema),
+  fields: TemplateFieldsSchema,
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type Template = z.infer<typeof TemplateSchema>;
+
+/** List rows omit the (potentially large) field layout. */
+export const TemplateSummarySchema = TemplateSchema.omit({ fields: true, pageSizes: true });
+export type TemplateSummary = z.infer<typeof TemplateSummarySchema>;
+
+export const TemplateListSchema = z.object({ templates: z.array(TemplateSummarySchema) });
+export type TemplateList = z.infer<typeof TemplateListSchema>;
+
+/** PATCH body: rename and/or replace the whole field layout. */
+export const TemplateUpdateSchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    fields: TemplateFieldsSchema.optional(),
+  })
+  .refine((b) => b.name !== undefined || b.fields !== undefined, {
+    message: 'nothing to update',
+  });
+export type TemplateUpdate = z.infer<typeof TemplateUpdateSchema>;
 
 export const DocumentSchema = z.object({
   id: z.uuid(),

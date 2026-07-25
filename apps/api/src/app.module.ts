@@ -9,6 +9,8 @@ import { env } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
 import { DocumentsController } from './modules/documents/documents.controller.js';
 import { DocumentsService } from './modules/documents/documents.service.js';
+import { TemplatesController } from './modules/templates/templates.controller.js';
+import { TemplatesService } from './modules/templates/templates.service.js';
 import { MeController } from './modules/me/me.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { QueueService } from './queue/queue.service.js';
@@ -42,7 +44,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
       },
     }),
   ],
-  controllers: [HealthController, MeController, DocumentsController],
+  controllers: [HealthController, MeController, DocumentsController, TemplatesController],
   providers: [
     ClerkService,
     PrismaService,
@@ -51,6 +53,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     TenantSyncService,
     StorageService,
     DocumentsService,
+    TemplatesService,
     QueueService,
     SealProvider,
     // Global default-deny: every route must carry @Policy() or it is refused.

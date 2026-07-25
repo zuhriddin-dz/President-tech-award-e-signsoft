@@ -47,20 +47,43 @@ model User {
 }
 
 // Uploaded source PDFs. Bytes live in R2 under tenants/<tenant_id>/…;
-// this row is the metadata + pointer. Template fields arrive in Phase 7a.
+// this row is the metadata + pointer.
 model Document {
-  id          String   @id @default(uuid()) @db.Uuid
+  id          String     @id @default(uuid()) @db.Uuid
   // Defaults to the RLS context in the DB — creates never name a tenant.
-  tenantId    String   @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
+  tenantId    String     @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
   name        String
-  contentType String   @map("content_type")
-  byteSize    Int      @map("byte_size")
+  contentType String     @map("content_type")
+  byteSize    Int        @map("byte_size")
   sha256      String
-  storageKey  String   @unique @map("storage_key")
-  createdAt   DateTime @default(now()) @map("created_at")
+  storageKey  String     @unique @map("storage_key")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  templates   Template[]
 
   @@index([tenantId, createdAt])
   @@map("documents")
+}
+
+// A reusable signable document: a source Document + a field layout.
+// `fields` is a JSON array of placements validated by the contract's
+// TemplateFieldSchema. Coordinates are NORMALIZED (0..1 of the page,
+// TOP-LEFT origin) so the web editor and the PDF stamper agree without
+// any DPI/zoom coupling — the stamper flips y to PDF's bottom-left origin.
+// `pageSizes` is the per-page [{w,h}] in PDF points, captured at upload.
+model Template {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
+  name       String
+  documentId String   @map("document_id") @db.Uuid
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  pageCount  Int      @map("page_count")
+  pageSizes  Json     @map("page_sizes")
+  fields     Json     @default("[]")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, createdAt])
+  @@map("templates")
 }
 
 model Membership {
