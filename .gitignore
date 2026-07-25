@@ -6,6 +6,8 @@ coverage/
 generated/
 *.tsbuildinfo
 *.log
+*.tmp.mjs
+*.tmp.js
 
 # secrets never enter the repo — .env.example carries names + generators only
 .env
