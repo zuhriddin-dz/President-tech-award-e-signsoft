@@ -7,6 +7,8 @@ interface ErrorEnvelope {
   statusCode: number;
   error: string;
   message?: string;
+  /** A stable machine code the client can branch on (e.g. ONBOARDING_REQUIRED). */
+  code?: string;
 }
 
 /**
@@ -35,11 +37,14 @@ export function envelopeOf(exception: unknown): ErrorEnvelope {
     if (status >= 500) return { statusCode: status, error: 'Internal Server Error' };
     // 4xx messages are ours (thrown deliberately) — safe for the client.
     const body = exception.getResponse();
-    const message =
-      typeof body === 'string'
-        ? body
-        : ((body as { message?: string | string[] }).message?.toString() ?? exception.message);
-    return { statusCode: status, error: exception.name, message };
+    if (typeof body === 'string') return { statusCode: status, error: exception.name, message: body };
+    const b = body as { message?: string | string[]; code?: string };
+    return {
+      statusCode: status,
+      error: exception.name,
+      message: b.message?.toString() ?? exception.message,
+      ...(b.code ? { code: b.code } : {}),
+    };
   }
   // Anything unexpected (driver error, TypeError, …) → opaque 500.
   return { statusCode: HttpStatus.INTERNAL_SERVER_ERROR, error: 'Internal Server Error' };

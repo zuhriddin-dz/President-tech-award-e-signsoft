@@ -1,30 +1,16 @@
-import { auth } from '@clerk/nextjs/server';
-import { CreateOrganization } from '@clerk/nextjs';
+import { redirect } from 'next/navigation';
 import { API_PATHS, MeResponseSchema } from '@docflow/contracts';
-import { apiGet } from '@/lib/api';
+import { apiGetOrOnboarding } from '@/lib/api';
 
 /**
- * Dashboard shell. Operator: a sender who just logged in; their one job here
- * (until Phase 8 gives them real counters) is confirming they're in the right
- * workspace. Everything is display; nothing is a form.
+ * Dashboard shell. Operator: a signed-in sender confirming they're in the
+ * right workspace. A user with no workspace yet is sent to the account choice.
  */
 export default async function DashboardPage() {
-  const { orgId } = await auth();
+  const result = await apiGetOrOnboarding(API_PATHS.me, MeResponseSchema);
+  if (result.status === 'onboarding') redirect('/welcome');
 
-  // No active organization → the only useful screen is "create one".
-  if (!orgId) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-12">
-        <h1 className="text-xl font-semibold text-ink">Create your workspace</h1>
-        <p className="text-sm text-ink-muted">
-          Documents, templates and teammates all live inside a workspace.
-        </p>
-        <CreateOrganization afterCreateOrganizationUrl="/dashboard" />
-      </div>
-    );
-  }
-
-  const me = await apiGet(API_PATHS.me, MeResponseSchema);
+  const me = result.status === 'ok' ? result.data : null;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6 px-6 py-8">
@@ -32,9 +18,10 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           {me?.tenant ? me.tenant.name : 'Dashboard'}
         </h1>
-        {me ? (
+        {me?.tenant ? (
           <p className="mt-1 text-sm text-ink-muted">
-            Your role: <span className="font-medium text-ink">{me.role}</span>
+            {me.tenant.kind === 'personal' ? 'Personal workspace' : 'Company workspace'} · your role:{' '}
+            <span className="font-medium text-ink">{me.role}</span>
           </p>
         ) : (
           <p className="mt-1 text-sm text-warning">

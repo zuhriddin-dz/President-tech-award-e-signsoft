@@ -23,10 +23,23 @@ enum MembershipRole {
   @@map("membership_role")
 }
 
+// A workspace is either one person's (personal) or an organization's (company).
+// Same table, same RLS isolation — only billing/features branch on this.
+enum TenantKind {
+  personal
+  company
+
+  @@map("tenant_kind")
+}
+
 model Tenant {
   id          String       @id @default(uuid()) @db.Uuid
   name        String
-  clerkOrgId  String?      @unique @map("clerk_org_id")
+  kind        TenantKind   @default(company)
+  // Company tenants key on the Clerk org; personal tenants key on the Clerk
+  // user. Exactly one is set. Both unique so a person/org maps to one tenant.
+  clerkOrgId     String?   @unique @map("clerk_org_id")
+  personalUserId String?   @unique @map("personal_user_id")
   createdAt   DateTime     @default(now()) @map("created_at")
   memberships Membership[]
 

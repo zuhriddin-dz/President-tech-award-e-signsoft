@@ -9,6 +9,7 @@ import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { roleSatisfies } from '../auth/claims.js';
 import { ClerkService } from '../auth/clerk.service.js';
+import { TenantContext } from '../tenant/tenant-context.js';
 import { TenantSyncService } from '../tenant/tenant-sync.service.js';
 
 export const POLICY_KEY = 'docflow:policy';
@@ -16,10 +17,11 @@ export const POLICY_KEY = 'docflow:policy';
 /**
  * Every route MUST declare a policy — the guard denies anything undeclared.
  * 'public'  — no auth at all (health, future /sign relay endpoints).
- * role names — verified Clerk session with an active org; the member's role
- *              must satisfy the named minimum (viewer < member < admin < owner).
+ * 'session' — verified Clerk session, NO workspace required (onboarding only).
+ * role names — verified session with a workspace; the member's role must
+ *              satisfy the named minimum (viewer < member < admin < owner).
  */
-export type PolicyName = 'public' | 'viewer' | 'member' | 'admin' | 'owner';
+export type PolicyName = 'public' | 'session' | 'viewer' | 'member' | 'admin' | 'owner';
 
 const MIN_ROLE = {
   viewer: 'VIEWER',
@@ -36,6 +38,7 @@ export class PolicyGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly clerk: ClerkService,
     private readonly sync: TenantSyncService,
+    private readonly tenantContext: TenantContext,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -47,15 +50,21 @@ export class PolicyGuard implements CanActivate {
     if (policy === undefined) throw new ForbiddenException();
     if (policy === 'public') return true;
 
-    const required = MIN_ROLE[policy as keyof typeof MIN_ROLE];
-    if (!required) throw new ForbiddenException(); // unknown policy: fail closed
-
     const header = context.switchToHttp().getRequest<Request>().headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
     if (!token) throw new UnauthorizedException();
-
     const identity = await this.clerk.verifyBearer(token);
-    const auth = await this.sync.establish(identity); // enters tenant context
+
+    // 'session': verified user, no workspace yet — onboarding routes only.
+    if (policy === 'session') {
+      this.tenantContext.setIdentity(identity);
+      return true;
+    }
+
+    const required = MIN_ROLE[policy as keyof typeof MIN_ROLE];
+    if (!required) throw new ForbiddenException(); // unknown policy: fail closed
+
+    const auth = await this.sync.establish(identity); // enters tenant context (or OnboardingRequired)
     if (!roleSatisfies(auth.role, required)) throw new ForbiddenException();
     return true;
   }

@@ -12,6 +12,7 @@ import { DocumentsService } from './modules/documents/documents.service.js';
 import { TemplatesController } from './modules/templates/templates.controller.js';
 import { TemplatesService } from './modules/templates/templates.service.js';
 import { MeController } from './modules/me/me.controller.js';
+import { OnboardingController } from './modules/onboarding/onboarding.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { QueueService } from './queue/queue.service.js';
 import { SealProvider } from './crypto/seal.provider.js';
@@ -44,7 +45,13 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
       },
     }),
   ],
-  controllers: [HealthController, MeController, DocumentsController, TemplatesController],
+  controllers: [
+    HealthController,
+    MeController,
+    OnboardingController,
+    DocumentsController,
+    TemplatesController,
+  ],
   providers: [
     ClerkService,
     PrismaService,

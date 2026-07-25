@@ -13,10 +13,13 @@ import { z } from 'zod';
 export const MembershipRoleSchema = z.enum(['OWNER', 'ADMIN', 'MEMBER', 'VIEWER']);
 export type MembershipRole = z.infer<typeof MembershipRoleSchema>;
 
+export const TenantKindSchema = z.enum(['personal', 'company']);
+export type TenantKind = z.infer<typeof TenantKindSchema>;
+
 export const MeResponseSchema = z.object({
   userId: z.uuid(),
   role: MembershipRoleSchema,
-  tenant: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  tenant: z.object({ id: z.uuid(), name: z.string(), kind: TenantKindSchema }).nullable(),
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 
@@ -26,6 +29,7 @@ export const API_PATHS = {
   me: '/me',
   documents: '/documents',
   templates: '/templates',
+  onboardingPersonal: '/onboarding/personal',
 } as const;
 
 // ── Templates & field layout ────────────────────────────────────────────────

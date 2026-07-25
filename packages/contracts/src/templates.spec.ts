@@ -1,5 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { TemplateFieldSchema, TemplateUpdateSchema, FieldTypeSchema } from './index.js';
+import {
+  FieldTypeSchema,
+  MeResponseSchema,
+  TemplateFieldSchema,
+  TemplateUpdateSchema,
+} from './index.js';
+
+describe('MeResponseSchema', () => {
+  it('includes the workspace kind and rejects an unknown kind', () => {
+    const good = {
+      userId: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',
+      role: 'OWNER',
+      tenant: { id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f', name: 'Acme', kind: 'company' },
+    };
+    expect(MeResponseSchema.parse(good).tenant?.kind).toBe('company');
+    expect(() =>
+      MeResponseSchema.parse({ ...good, tenant: { ...good.tenant, kind: 'enterprise' } }),
+    ).toThrow();
+  });
+});
 
 const base = {
   id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',

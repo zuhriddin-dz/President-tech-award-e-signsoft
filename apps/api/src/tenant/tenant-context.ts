@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
 import type { MembershipRole } from '@docflow/db';
+import type { VerifiedIdentity } from '../auth/claims.js';
 
 /**
  * apps/api/src/tenant/ — THE sanctioned tenant territory (security-lint
@@ -18,6 +19,7 @@ export interface RequestAuth {
 }
 
 const AUTH_KEY = 'docflow:auth';
+const IDENTITY_KEY = 'docflow:identity';
 
 @Injectable()
 export class TenantContext {
@@ -37,5 +39,17 @@ export class TenantContext {
     const auth = this.auth();
     if (!auth) throw new Error('No tenant context on this request');
     return auth;
+  }
+
+  /**
+   * The verified Clerk identity, stored by the guard BEFORE any tenant exists
+   * (the 'session' policy). Onboarding reads it to create the first workspace.
+   */
+  setIdentity(identity: VerifiedIdentity): void {
+    this.cls.set(IDENTITY_KEY, identity);
+  }
+
+  identity(): VerifiedIdentity | null {
+    return this.cls.get<VerifiedIdentity | null>(IDENTITY_KEY) ?? null;
   }
 }

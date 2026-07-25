@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { VerifiedIdentity } from '../auth/claims.js';
 import type { ClerkService } from '../auth/clerk.service.js';
 import type { TenantSyncService } from '../tenant/tenant-sync.service.js';
-import type { RequestAuth } from '../tenant/tenant-context.js';
+import type { RequestAuth, TenantContext } from '../tenant/tenant-context.js';
 import { Policy, PolicyGuard, POLICY_KEY } from './policy.js';
 
 const identity: VerifiedIdentity = {
@@ -22,7 +22,8 @@ function guardWith(role: RequestAuth['role']): PolicyGuard {
     establish: async (id: VerifiedIdentity) =>
       ({ userId: 'u', clerkUserId: id.clerkUserId, tenantId: 't', role: id.role }) as RequestAuth,
   } as unknown as TenantSyncService;
-  return new PolicyGuard(new Reflector(), clerk, sync);
+  const tenantContext = { setIdentity: () => {} } as unknown as TenantContext;
+  return new PolicyGuard(new Reflector(), clerk, sync, tenantContext);
 }
 
 function contextFor(handler: object, authorization?: string): ExecutionContext {

@@ -1,8 +1,7 @@
 import Link from 'next/link';
-import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
 import { API_PATHS, TemplateListSchema } from '@docflow/contracts';
-import { CreateOrganization } from '@clerk/nextjs';
-import { apiGet } from '@/lib/api';
+import { apiGetOrOnboarding } from '@/lib/api';
 import { NewTemplateCard } from './new-template-card';
 
 /**
@@ -11,18 +10,9 @@ import { NewTemplateCard } from './new-template-card';
  * The list is display; the only form is the upload card.
  */
 export default async function TemplatesPage() {
-  const { orgId } = await auth();
-  if (!orgId) {
-    return (
-      <div className="flex flex-col items-center gap-4 py-12">
-        <h1 className="text-xl font-semibold text-ink">Create your workspace first</h1>
-        <CreateOrganization afterCreateOrganizationUrl="/templates" />
-      </div>
-    );
-  }
-
-  const data = await apiGet(API_PATHS.templates, TemplateListSchema);
-  const templates = data?.templates ?? [];
+  const result = await apiGetOrOnboarding(API_PATHS.templates, TemplateListSchema);
+  if (result.status === 'onboarding') redirect('/welcome');
+  const templates = result.status === 'ok' ? result.data.templates : [];
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-8">

@@ -87,17 +87,44 @@ describe.skipIf(!live)('tenant sync + RLS end to end (Neon)', () => {
     });
   });
 
-  it('refuses a session with no active organization', async () => {
+  it('a no-org user with no personal workspace must onboard', async () => {
     await cls.run(async () => {
       await expect(
         sync.establish({
-          clerkUserId: clerkUser,
+          clerkUserId: `user_noworkspace_${suffix}`,
           email: null,
           clerkOrgId: null,
           orgName: null,
           role: null,
         }),
-      ).rejects.toThrow(/organization/i);
+      ).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
+  it('establishPersonal creates a personal workspace, then establish reuses it', async () => {
+    const personalUser = `user_personal_${suffix}`;
+    const identity = {
+      clerkUserId: personalUser,
+      email: `${suffix}@personal.docflow.invalid`,
+      clerkOrgId: null,
+      orgName: null,
+      role: null,
+    };
+    await cls.run(async () => {
+      const created = await sync.establishPersonal(identity);
+      expect(created.role).toBe('OWNER');
+
+      // A subsequent request with no org reuses the personal tenant (no onboarding).
+      const reused = await sync.establish(identity);
+      expect(reused.tenantId).toBe(created.tenantId);
+
+      // It is a personal-kind tenant, RLS-scoped to itself.
+      const tenants = await db.tx((tx) => tx.tenant.findMany());
+      expect(tenants).toHaveLength(1);
+      expect(tenants[0]?.kind).toBe('personal');
+
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { personalUserId: personalUser } }));
+      await prisma.user.deleteMany({ where: { clerkUserId: personalUser } });
     });
   });
 });
