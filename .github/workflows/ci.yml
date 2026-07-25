@@ -18,6 +18,7 @@ jobs:
       S3_ACCESS_KEY_ID: ci
       S3_SECRET_ACCESS_KEY: ci
       REDIS_URL: redis://127.0.0.1:6390/0
+      ESIGN_SEAL_KEYS: '[{"kid":"ci-seal","privateKeyPkcs8Pem":"-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIIhGPuLP7SanD5fScAHdBqw3RX9ZZU5XxkV7jMvqPJP5\n-----END PRIVATE KEY-----\n","state":"active"}]'
     steps:
       - uses: actions/checkout@v4
 

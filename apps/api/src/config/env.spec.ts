@@ -9,6 +9,7 @@ const REQUIRED = {
   S3_ACCESS_KEY_ID: 'key',
   S3_SECRET_ACCESS_KEY: 'secret',
   REDIS_URL: 'redis://127.0.0.1:6379/0',
+  ESIGN_SEAL_KEYS: '[{"kid":"t","privateKeyPkcs8Pem":"x","state":"active"}]',
 };
 
 describe('env contract', () => {

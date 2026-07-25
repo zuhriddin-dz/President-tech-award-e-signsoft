@@ -12,6 +12,7 @@ import { DocumentsService } from './modules/documents/documents.service.js';
 import { MeController } from './modules/me/me.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { QueueService } from './queue/queue.service.js';
+import { SealProvider } from './crypto/seal.provider.js';
 import { StorageService } from './storage/storage.service.js';
 import { TenantContext } from './tenant/tenant-context.js';
 import { TenantDb } from './tenant/tenant-db.js';
@@ -51,6 +52,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     StorageService,
     DocumentsService,
     QueueService,
+    SealProvider,
     // Global default-deny: every route must carry @Policy() or it is refused.
     { provide: APP_GUARD, useClass: PolicyGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

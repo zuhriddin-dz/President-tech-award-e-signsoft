@@ -25,6 +25,10 @@ const envSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   // BullMQ backend (redis:// locally, rediss:// on Upstash).
   REDIS_URL: z.string().startsWith('redis'),
+  // Ed25519 seal ring JSON [{kid, privateKeyPkcs8Pem, state}] — long-lived,
+  // separate from auth keys, exactly one active. Validated deeply by
+  // parseSealRing() where SealService is constructed.
+  ESIGN_SEAL_KEYS: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

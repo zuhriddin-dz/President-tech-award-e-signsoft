@@ -18,6 +18,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1095.0",
     "@clerk/backend": "3.13.1",
+    "@docflow/crypto": "workspace:*",
     "@docflow/db": "workspace:*",
     "@nestjs/common": "11.1.28",
     "@nestjs/core": "11.1.28",
