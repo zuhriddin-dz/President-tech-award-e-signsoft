@@ -1,0 +1,28 @@
+# Local dev dependencies for DocFlow. Postgres is Neon (cloud) and storage is
+# R2 (cloud), so the only thing to run locally is Redis — the BullMQ backend.
+#
+#   docker compose up -d      # start
+#   docker compose ps         # check
+#   docker compose down       # stop
+#
+# Bound to 127.0.0.1 only: never reachable from the network. No password in
+# dev because it is loopback-only; the deployed Redis (Upstash) uses rediss://
+# with credentials in REDIS_URL.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: docflow_redis
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6379:6379'
+    command: ['redis-server', '--save', '60', '1', '--loglevel', 'warning']
+    volumes:
+      - docflow_redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  docflow_redis_data:
