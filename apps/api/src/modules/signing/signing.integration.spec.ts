@@ -94,17 +94,33 @@ describe.skipIf(!live)('public signing surface (live)', () => {
     const view = await cls.run(() => signing.view(token, '1.2.3.4', 'test-agent'));
     expect(view.documentName).toBe('Sign NDA');
     expect(view.completed).toBe(false);
+    expect(view.consentAt).toBeNull();
+    expect(view.signerEmail).toBeTruthy();
     expect(view.fields.length).toBe(1);
 
+    // Submit BEFORE consent is refused (evidence must not predate consent).
+    await cls.run(async () => {
+      await expect(
+        signing.submit(token, { method: 'typed', signatureImage: PNG, fieldValues: {} }, '1.2.3.4', 'ua'),
+      ).rejects.toMatchObject({ status: 404 });
+    });
+
+    await cls.run(() => signing.consent(token));
+
     const first = await cls.run(() =>
-      signing.submit(token, { consent: true, method: 'typed', signatureImage: PNG }, '1.2.3.4', 'ua'),
+      signing.submit(
+        token,
+        { method: 'typed', signatureImage: PNG, fieldValues: { note: 'ok' } },
+        '1.2.3.4',
+        'ua',
+      ),
     );
     expect(first).toEqual({ ok: true });
 
     // Second submit on the consumed token → uniform 404.
     await cls.run(async () => {
       await expect(
-        signing.submit(token, { consent: true, method: 'typed', signatureImage: PNG }, '1.2.3.4', 'ua'),
+        signing.submit(token, { method: 'typed', signatureImage: PNG, fieldValues: {} }, '1.2.3.4', 'ua'),
       ).rejects.toMatchObject({ status: 404 });
     });
 
@@ -114,6 +130,8 @@ describe.skipIf(!live)('public signing surface (live)', () => {
     });
     expect(row?.status).toBe('completed');
     expect(row?.signatureMethod).toBe('typed');
+    expect(row?.consentAt).not.toBeNull();
+    expect((row?.fieldValues as Record<string, string>).note).toBe('ok');
     expect(row?.signatureImageKey).toContain(`tenants/${tenantId}/signatures/`);
   }, 90_000);
 

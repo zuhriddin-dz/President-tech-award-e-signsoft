@@ -20,8 +20,10 @@ interface LoadedRequest {
   documentName: string;
   fields: TemplateField[];
   recipientName: string | null;
+  recipientEmail: string;
   status: string;
   expiresAt: Date;
+  consentAt: Date | null;
   signingTokenHash: string;
 }
 
@@ -55,10 +57,27 @@ export class SigningService {
       documentName: row.documentName,
       fields: row.fields as TemplateField[],
       recipientName: row.recipientName,
+      recipientEmail: row.recipientEmail,
       status: row.status,
       expiresAt: row.expiresAt,
+      consentAt: row.consentAt,
       signingTokenHash: row.signingTokenHash,
     };
+  }
+
+  /** Record consent to sign electronically — before any field is filled. */
+  async consent(rawToken: string): Promise<{ ok: true }> {
+    const req = await this.loadForToken(rawToken);
+    if (req.status !== 'sent' && req.status !== 'viewed') notValid();
+    if (!req.consentAt) {
+      await this.db.tx((tx) =>
+        tx.signatureRequest.updateMany({
+          where: { id: req.id, status: { in: ['sent', 'viewed'] } },
+          data: { consentAt: new Date() },
+        }),
+      );
+    }
+    return { ok: true };
   }
 
   /** Render data for the ceremony; records the first view (audit) idempotently. */
@@ -90,10 +109,12 @@ export class SigningService {
     return {
       documentName: req.documentName,
       recipientName: req.recipientName,
+      signerEmail: req.recipientEmail,
       pageCount: tpl?.pageCount ?? 1,
       pageSizes: (tpl?.pageSizes as { w: number; h: number }[]) ?? [],
       fields: req.fields,
       status: req.status as SignerView['status'],
+      consentAt: req.consentAt?.toISOString() ?? null,
       completed: req.status === 'completed',
     };
   }
@@ -123,6 +144,9 @@ export class SigningService {
   ): Promise<{ ok: true }> {
     const req = await this.loadForToken(rawToken);
     if (req.status !== 'sent' && req.status !== 'viewed') notValid();
+    // Consent must have been recorded first — the evidence never claims a
+    // signature that predates consent.
+    if (!req.consentAt) notValid();
 
     const png = decodeSignaturePng(dto.signatureImage);
     if (!png) notValid();
@@ -143,10 +167,10 @@ export class SigningService {
         },
         data: {
           status: 'completed',
-          consentAt: now,
           completedAt: now,
           signatureMethod: dto.method,
           signatureImageKey: signatureKey,
+          fieldValues: dto.fieldValues,
           signerIp: ip,
           signerUserAgent: ua,
         },

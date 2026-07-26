@@ -10,7 +10,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { SubmitSignatureSchema, type SignerView, type SubmitSignature } from '@docflow/contracts';
+import { ConsentSchema, SubmitSignatureSchema, type SignerView, type SubmitSignature } from '@docflow/contracts';
 import { Policy } from '../../common/policy.js';
 import { SigningService } from './signing.service.js';
 
@@ -57,6 +57,17 @@ export class SigningController {
     badToken(token);
     const { stream, size } = await this.signing.readDocument(token);
     return new StreamableFile(stream, { type: 'application/pdf', disposition: 'inline', length: size });
+  }
+
+  @Post(':token/consent')
+  @Policy('sign-relay')
+  @Header('Cache-Control', 'no-store')
+  async consent(@Param('token') token: string, @Body() body: unknown): Promise<{ ok: true }> {
+    badToken(token);
+    if (!ConsentSchema.safeParse(body).success) {
+      throw new BadRequestException('consent not accepted');
+    }
+    return this.signing.consent(token);
   }
 
   @Post(':token/submit')

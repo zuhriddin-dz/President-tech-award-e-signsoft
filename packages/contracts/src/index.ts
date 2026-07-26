@@ -166,20 +166,36 @@ export type DocumentList = z.infer<typeof DocumentListSchema>;
 export const SignerViewSchema = z.object({
   documentName: z.string(),
   recipientName: z.string().nullable(),
+  /** The signer's own email — used to auto-fill email/name fields. */
+  signerEmail: z.email(),
   pageCount: z.number().int().positive(),
   pageSizes: z.array(PageSizeSchema),
   fields: TemplateFieldsSchema,
   status: SignatureStatusSchema,
+  /** Set once the signer has agreed to sign electronically (consent step). */
+  consentAt: z.iso.datetime().nullable(),
   /** True once signed — the ceremony shows a completion screen, not the form. */
   completed: z.boolean(),
 });
 export type SignerView = z.infer<typeof SignerViewSchema>;
 
-/** The signer's submission: consent + one adopted-signature PNG data URL. */
+/** Consent to sign electronically — recorded BEFORE any field is filled. */
+export const ConsentSchema = z.object({ agreed: z.literal(true) });
+export type Consent = z.infer<typeof ConsentSchema>;
+
+export const SignatureMethodSchema = z.enum(['typed', 'drawn', 'uploaded']);
+export type SignatureMethod = z.infer<typeof SignatureMethodSchema>;
+
+/**
+ * The signer's submission: the adopted-signature PNG plus the values they
+ * entered/auto-filled for non-signature fields (keyed by field id). Consent is
+ * recorded separately, before this, so the evidence never claims a signature
+ * predating consent.
+ */
 export const SubmitSignatureSchema = z.object({
-  consent: z.literal(true),
-  method: z.enum(['typed', 'drawn']),
+  method: SignatureMethodSchema,
   signatureImage: z.string().startsWith('data:image/png;base64,').max(3_000_000),
+  fieldValues: z.record(z.string(), z.string().max(500)).default({}),
 });
 export type SubmitSignature = z.infer<typeof SubmitSignatureSchema>;
 

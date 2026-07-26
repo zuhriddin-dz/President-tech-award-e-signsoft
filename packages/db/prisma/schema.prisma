@@ -118,6 +118,9 @@ model SignatureRequest {
   signatureImageKey String?  @map("signature_image_key")
   signerIp          String?  @map("signer_ip")
   signerUserAgent   String?  @map("signer_user_agent")
+  // Values the signer entered/auto-filled for non-signature fields, keyed by
+  // field id — stamped into the PDF in Phase 10.
+  fieldValues       Json     @default("{}") @map("field_values")
 
   @@index([tenantId, status, sentAt])
   @@map("signature_requests")
