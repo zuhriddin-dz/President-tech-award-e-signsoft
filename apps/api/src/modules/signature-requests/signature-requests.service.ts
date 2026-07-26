@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { mintSigningToken } from '@docflow/crypto';
 import type { SendRequest, SignatureStatus } from '@docflow/contracts';
 import { env } from '../../config/env.js';
@@ -21,6 +27,8 @@ export interface SignatureRequestWire {
 
 @Injectable()
 export class SignatureRequestsService {
+  private readonly logger = new Logger(SignatureRequestsService.name);
+
   constructor(
     private readonly db: TenantDb,
     private readonly context: TenantContext,
@@ -75,10 +83,22 @@ export class SignatureRequestsService {
       signUrl: `${env.SIGN_APP_URL}/sign/${token}`,
     };
     // Hyphen, not colon — BullMQ custom job ids may not contain ':'.
-    await this.queue.enqueue(INVITE_JOB, { ...job }, `invite-${row.id}`, {
-      removeOnComplete: true,
-      removeOnFail: true,
-    });
+    try {
+      await this.queue.enqueue(INVITE_JOB, { ...job }, `invite-${row.id}`, {
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    } catch (cause) {
+      // The invite is the whole point of a send. If it cannot be queued (Redis
+      // down/unreachable), roll the request back rather than leaving a phantom
+      // "waiting for signature" row whose email will never arrive — the
+      // dashboard must never claim something we didn't do.
+      await this.db.tx((tx) => tx.signatureRequest.deleteMany({ where: { id: row.id } }));
+      this.logger.error(`invite enqueue failed for ${row.id}: ${(cause as Error).message}`);
+      throw new ServiceUnavailableException(
+        'Could not send right now — the background service is unavailable. Please try again.',
+      );
+    }
 
     return toWire(row);
   }

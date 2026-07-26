@@ -131,6 +131,45 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
     });
   }, 90_000);
 
+  it('a failed invite enqueue rolls the request back (no phantom "waiting" row)', async () => {
+    // The exact failure the owner hit: Redis down. The send must fail fast AND
+    // leave nothing behind — a row whose email will never arrive would make the
+    // dashboard claim something we didn't do.
+    const failingQueue = {
+      enqueue: async () => {
+        throw new Error('connect ECONNREFUSED 127.0.0.1:6379');
+      },
+    } as unknown as import('../../queue/queue.service.js').QueueService;
+    const failing = new SignatureRequestsService(db, context, failingQueue);
+
+    await cls.run(async () => {
+      enter(tenantA);
+      await seed(tenantA);
+      const templateId = await templateWithField();
+
+      await expect(
+        failing.send({ templateId, recipientEmail: 'signer@example.com' }, 'sender@acme.test'),
+      ).rejects.toMatchObject({ status: 503 });
+
+      // Nothing stranded.
+      expect(await requests.list()).toEqual([]);
+
+      // Cleanup.
+      const tpl = await db.tx((tx) =>
+        tx.template.findUnique({ where: { id: templateId }, select: { documentId: true } }),
+      );
+      await db.tx((tx) => tx.template.deleteMany({ where: { id: templateId } }));
+      if (tpl) {
+        const d = await db.tx((tx) =>
+          tx.document.findUnique({ where: { id: tpl.documentId }, select: { storageKey: true } }),
+        );
+        if (d) await storage.delete(d.storageKey);
+        await db.tx((tx) => tx.document.deleteMany({ where: { id: tpl.documentId } }));
+      }
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { id: tenantA } }));
+    });
+  }, 90_000);
+
   it('tenant B cannot see tenant A requests, and a foreign template 404s', async () => {
     await cls.run(async () => {
       enter(tenantB);
