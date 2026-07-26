@@ -159,4 +159,28 @@ export type Document = z.infer<typeof DocumentSchema>;
 export const DocumentListSchema = z.object({ documents: z.array(DocumentSchema) });
 export type DocumentList = z.infer<typeof DocumentListSchema>;
 
+// ── Public signing ceremony ─────────────────────────────────────────────────
+// (After the templates block — reuses PageSizeSchema + TemplateFieldsSchema.)
+
+/** What the signer's browser gets to render the ceremony (no secrets). */
+export const SignerViewSchema = z.object({
+  documentName: z.string(),
+  recipientName: z.string().nullable(),
+  pageCount: z.number().int().positive(),
+  pageSizes: z.array(PageSizeSchema),
+  fields: TemplateFieldsSchema,
+  status: SignatureStatusSchema,
+  /** True once signed — the ceremony shows a completion screen, not the form. */
+  completed: z.boolean(),
+});
+export type SignerView = z.infer<typeof SignerViewSchema>;
+
+/** The signer's submission: consent + one adopted-signature PNG data URL. */
+export const SubmitSignatureSchema = z.object({
+  consent: z.literal(true),
+  method: z.enum(['typed', 'drawn']),
+  signatureImage: z.string().startsWith('data:image/png;base64,').max(3_000_000),
+});
+export type SubmitSignature = z.infer<typeof SubmitSignatureSchema>;
+
 export const PACKAGE_NAME = '@docflow/contracts' as const;

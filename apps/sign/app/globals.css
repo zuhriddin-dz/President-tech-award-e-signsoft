@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+/* DocFlow — WHITE/LIGHT theme (owner decision 2026-07-24; dark was rejected).
+   Semantic tokens only — components never hardcode a color. */
+@theme {
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f8fa;
+  --color-border: #e5e7eb;
+  --color-ink: #111827;
+  --color-ink-muted: #6b7280;
+  --color-brand: #2563eb;
+  --color-brand-ink: #ffffff;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+}
+
+body {
+  background-color: var(--color-surface-muted);
+  color: var(--color-ink);
+}

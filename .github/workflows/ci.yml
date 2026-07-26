@@ -23,6 +23,7 @@ jobs:
       EMAIL_FROM: DocFlow <onboarding@resend.dev>
       SIGN_APP_URL: http://localhost:3300
       ESIGN_LINK_TTL_DAYS: '14'
+      SIGN_RELAY_SECRET: ci_dummy_relay_secret_at_least_32_bytes_long
     steps:
       - uses: actions/checkout@v4
 

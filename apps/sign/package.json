@@ -3,18 +3,29 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./dist/index.js"
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
-    "lint": "eslint src"
+    "build": "next build",
+    "dev": "next dev -p 3300",
+    "start": "next start -p 3300",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint app lib"
+  },
+  "dependencies": {
+    "@docflow/contracts": "workspace:*",
+    "next": "16.2.11",
+    "pdfjs-dist": "6.1.200",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@docflow/config": "workspace:*",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.8",
     "eslint": "10.7.0",
+    "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "zod": "4.4.3"
   }
 }

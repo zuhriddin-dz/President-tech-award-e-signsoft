@@ -13,6 +13,7 @@ const REQUIRED = {
   RESEND_API_KEY: 're_test',
   EMAIL_FROM: 'DocFlow <onboarding@resend.dev>',
   SIGN_APP_URL: 'http://localhost:3300',
+  SIGN_RELAY_SECRET: 'test_relay_secret_at_least_32_bytes_long_xx',
 };
 
 describe('env contract', () => {

@@ -13,3 +13,11 @@ export interface SigningInviteJob {
   /** Full signing URL including the raw single-use token. */
   signUrl: string;
 }
+
+// The completion pipeline (Phase 10): stamp → hash → seal → certificate →
+// email. Carries only the request id; the worker loads everything under RLS.
+export const COMPLETE_JOB = 'complete-signature';
+
+export interface CompleteSignatureJob {
+  requestId: string;
+}

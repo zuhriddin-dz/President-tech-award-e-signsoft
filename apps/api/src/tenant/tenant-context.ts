@@ -42,6 +42,21 @@ export class TenantContext {
   }
 
   /**
+   * Enter tenant context for the SESSIONLESS signer path — a resolved signing
+   * token, no user/role. Only the token resolver in this folder calls it. Uses
+   * a sentinel userId/role so TenantDb.tx() (which reads tenantId) works; the
+   * signer routes never consult role.
+   */
+  enterAsSigner(tenantId: string): void {
+    this.cls.set(AUTH_KEY, {
+      userId: '00000000-0000-0000-0000-000000000000',
+      clerkUserId: 'signer',
+      tenantId,
+      role: 'VIEWER',
+    });
+  }
+
+  /**
    * The verified Clerk identity, stored by the guard BEFORE any tenant exists
    * (the 'session' policy). Onboarding reads it to create the first workspace.
    */

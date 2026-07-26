@@ -1,7 +1,10 @@
+import { pino } from 'pino';
 import { ResendSender } from '../email/resend.sender.js';
 import { buildSigningInviteEmail } from '../email/signing-invite-email.js';
 import type { EmailSender } from '../email/email.types.js';
-import { INVITE_JOB, type SigningInviteJob } from './jobs.js';
+import { COMPLETE_JOB, INVITE_JOB, type SigningInviteJob } from './jobs.js';
+
+const log = pino();
 
 /**
  * Job-name → processor registry, consumed by the worker. Each processor is
@@ -24,5 +27,11 @@ export const processors: Record<string, Processor> = {
     // by jobId, and a retry re-sends the SAME invite (same link) — acceptable,
     // since the token is single-use, so at most one signing can result.
     await email.send(buildSigningInviteEmail(job));
+  },
+
+  // Phase 10 will stamp → hash → seal → certificate → email here. For now the
+  // signer's submission is recorded and claimed (Phase 9); this just logs.
+  [COMPLETE_JOB]: async (data) => {
+    log.info({ requestId: (data as { requestId?: string }).requestId }, 'completion job (stub — Phase 10)');
   },
 };

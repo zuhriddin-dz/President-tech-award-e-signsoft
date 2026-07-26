@@ -20,5 +20,12 @@ export {
 } from './tokens.js';
 export { buildCertificatePdf, type CertificateInput } from './certificate.js';
 export { toPdfSafeText } from './pdf-text.js';
+export {
+  isPng,
+  pngDimensions,
+  decodeSignaturePng,
+  MAX_SIGNATURE_PIXELS,
+  MAX_SIGNATURE_BYTES,
+} from './png-bytes.js';
 
 export const PACKAGE_NAME = '@docflow/crypto' as const;

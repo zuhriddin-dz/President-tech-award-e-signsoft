@@ -111,7 +111,13 @@ model SignatureRequest {
   expiresAt        DateTime        @map("expires_at")
   sentAt           DateTime        @default(now()) @map("sent_at")
   viewedAt         DateTime?       @map("viewed_at")
+  consentAt        DateTime?       @map("consent_at")
   completedAt      DateTime?       @map("completed_at")
+  // Signer adoption + audit, captured during the ceremony (Phase 9).
+  signatureMethod   String?  @map("signature_method")
+  signatureImageKey String?  @map("signature_image_key")
+  signerIp          String?  @map("signer_ip")
+  signerUserAgent   String?  @map("signer_user_agent")
 
   @@index([tenantId, status, sentAt])
   @@map("signature_requests")

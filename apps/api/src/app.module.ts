@@ -13,6 +13,9 @@ import { TemplatesController } from './modules/templates/templates.controller.js
 import { TemplatesService } from './modules/templates/templates.service.js';
 import { SignatureRequestsController } from './modules/signature-requests/signature-requests.controller.js';
 import { SignatureRequestsService } from './modules/signature-requests/signature-requests.service.js';
+import { SigningController } from './modules/signing/signing.controller.js';
+import { SigningService } from './modules/signing/signing.service.js';
+import { SigningTokenResolver } from './tenant/signing-token.resolver.js';
 import { MeController } from './modules/me/me.controller.js';
 import { OnboardingController } from './modules/onboarding/onboarding.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -54,6 +57,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     DocumentsController,
     TemplatesController,
     SignatureRequestsController,
+    SigningController,
   ],
   providers: [
     ClerkService,
@@ -65,6 +69,8 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     DocumentsService,
     TemplatesService,
     SignatureRequestsService,
+    SigningService,
+    SigningTokenResolver,
     QueueService,
     SealProvider,
     // Global default-deny: every route must carry @Policy() or it is refused.

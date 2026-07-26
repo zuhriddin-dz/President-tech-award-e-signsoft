@@ -36,6 +36,10 @@ const envSchema = z.object({
   SIGN_APP_URL: z.url(),
   // Signing-link lifetime in days.
   ESIGN_LINK_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  // The narrow credential the public signing app relays with — accepted ONLY
+  // on /sign/* routes, so a compromise of that box reaches the signing surface
+  // and nothing else. >= 32 bytes.
+  SIGN_RELAY_SECRET: z.string().min(32),
 });
 
 export type Env = z.infer<typeof envSchema>;
