@@ -22,7 +22,7 @@ export function Ceremony({ token }: { token: string }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/relay/sign/${token}`, { cache: 'no-store' });
+        const res = await fetch(`/relay/${token}`, { cache: 'no-store' });
         if (!res.ok) {
           setLoadError(true);
           return;
@@ -34,7 +34,7 @@ export function Ceremony({ token }: { token: string }) {
     })();
   }, [token]);
 
-  const { pdf } = usePdf(`/relay/sign/${token}/document`);
+  const { pdf } = usePdf(`/relay/${token}/document`);
 
   const onAdopt = useCallback((v: Adopted) => setAdopted(v), []);
 
@@ -47,7 +47,7 @@ export function Ceremony({ token }: { token: string }) {
     if (!adopted || !consented) return;
     setSubmitState('submitting');
     try {
-      const res = await fetch(`/relay/sign/${token}/submit`, {
+      const res = await fetch(`/relay/${token}/submit`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ consent: true, method: adopted.method, signatureImage: adopted.png }),
