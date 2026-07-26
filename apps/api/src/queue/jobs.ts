@@ -20,4 +20,10 @@ export const COMPLETE_JOB = 'complete-signature';
 
 export interface CompleteSignatureJob {
   requestId: string;
+  /**
+   * The tenant to run under. SERVER-AUTHORED at enqueue time from the verified
+   * request row — never client input — because a worker has no request context
+   * to derive it from. Consumed only by apps/api/src/tenant/worker-tenant-db.
+   */
+  tenant: string;
 }

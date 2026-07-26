@@ -61,6 +61,40 @@ export class SigningController {
     return new StreamableFile(stream, { type: 'application/pdf', disposition: 'inline', length: size });
   }
 
+  @Get(':token/status')
+  @Policy('sign-relay')
+  @Header('Cache-Control', 'no-store')
+  async status(@Param('token') token: string): Promise<{ ready: boolean; documentName: string }> {
+    badToken(token);
+    return this.signing.completedStatus(token);
+  }
+
+  @Get(':token/signed')
+  @Policy('sign-relay')
+  @Header('Cache-Control', 'no-store')
+  async signed(@Param('token') token: string): Promise<StreamableFile> {
+    badToken(token);
+    const { stream, size, filename } = await this.signing.readCompleted(token, 'signed');
+    return new StreamableFile(stream, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+      length: size,
+    });
+  }
+
+  @Get(':token/certificate')
+  @Policy('sign-relay')
+  @Header('Cache-Control', 'no-store')
+  async certificate(@Param('token') token: string): Promise<StreamableFile> {
+    badToken(token);
+    const { stream, size, filename } = await this.signing.readCompleted(token, 'certificate');
+    return new StreamableFile(stream, {
+      type: 'application/pdf',
+      disposition: `attachment; filename="${filename}"`,
+      length: size,
+    });
+  }
+
   @Post(':token/consent')
   @Policy('sign-relay')
   @Header('Cache-Control', 'no-store')

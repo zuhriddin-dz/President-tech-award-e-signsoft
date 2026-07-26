@@ -1,8 +1,15 @@
+export interface EmailAttachment {
+  filename: string;
+  content: Buffer;
+}
+
 export interface EmailMessage {
   to: string;
   subject: string;
   html: string;
   text: string;
+  /** Optional files (the signed PDF + certificate on completion). */
+  attachments?: EmailAttachment[];
 }
 
 /**

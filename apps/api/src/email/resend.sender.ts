@@ -17,6 +17,14 @@ export class ResendSender implements EmailSender {
       subject: message.subject,
       html: message.html,
       text: message.text,
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content,
+            })),
+          }
+        : {}),
     });
     // Throw on provider error so the BullMQ job retries with backoff rather
     // than silently dropping a signing invite.

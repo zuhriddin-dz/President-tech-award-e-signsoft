@@ -2,7 +2,13 @@ import { pino } from 'pino';
 import { ResendSender } from '../email/resend.sender.js';
 import { buildSigningInviteEmail } from '../email/signing-invite-email.js';
 import type { EmailSender } from '../email/email.types.js';
-import { COMPLETE_JOB, INVITE_JOB, type SigningInviteJob } from './jobs.js';
+import { completeSignature } from '../modules/signing/completion.js';
+import {
+  COMPLETE_JOB,
+  INVITE_JOB,
+  type CompleteSignatureJob,
+  type SigningInviteJob,
+} from './jobs.js';
 
 const log = pino();
 
@@ -29,9 +35,12 @@ export const processors: Record<string, Processor> = {
     await email.send(buildSigningInviteEmail(job));
   },
 
-  // Phase 10 will stamp → hash → seal → certificate → email here. For now the
-  // signer's submission is recorded and claimed (Phase 9); this just logs.
+  // stamp → SHA-256 → Ed25519 seal → Certificate of Completion → store → email
+  // both parties. Idempotent: re-running after a crash is a no-op once the
+  // signed PDF exists (see completeSignature).
   [COMPLETE_JOB]: async (data) => {
-    log.info({ requestId: (data as { requestId?: string }).requestId }, 'completion job (stub — Phase 10)');
+    const job = data as unknown as CompleteSignatureJob;
+    await completeSignature(job.tenant, job.requestId);
+    log.info({ requestId: job.requestId }, 'signature completed (sealed + emailed)');
   },
 };

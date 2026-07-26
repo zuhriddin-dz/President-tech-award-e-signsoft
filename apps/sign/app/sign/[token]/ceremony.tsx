@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { CheckCircle2, FileSignature, Loader2, PenLine, ShieldAlert } from 'lucide-react';
+import {
+  CheckCircle2,
+  Download,
+  FileCheck,
+  FileSignature,
+  Loader2,
+  PenLine,
+  ShieldAlert,
+} from 'lucide-react';
 import { SignerViewSchema, type SignerView, type TemplateField } from '@docflow/contracts';
 import { autoValue, canFinish, fieldKey, fieldKind, signatureProgress, unsignedFields } from '@/lib/sign-fields';
 import { AdoptSignatureDialog, type AdoptedSignature } from './adopt-signature-dialog';
@@ -36,6 +44,7 @@ export function Ceremony({ token }: { token: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [artifactsReady, setArtifactsReady] = useState(false);
   const pendingField = useRef<string | null>(null);
   const [filled, setFilled] = useState<Record<string, string>>({});
 
@@ -151,6 +160,38 @@ export function Ceremony({ token }: { token: string }) {
     };
   }, [pages]);
 
+  // Once signed, poll until the worker has sealed the PDF and built the
+  // certificate, then reveal the download buttons. Bounded so a stuck worker
+  // degrades to "check your email" rather than spinning forever.
+  useEffect(() => {
+    if (!done || artifactsReady) return;
+    let cancelled = false;
+    let attempts = 0;
+    const tick = async () => {
+      if (cancelled || attempts >= 40) return;
+      attempts += 1;
+      try {
+        const res = await fetch(`/relay/${encodeURIComponent(token)}/status`, {
+          headers: { accept: 'application/json' },
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { ready?: boolean };
+          if (body.ready) {
+            if (!cancelled) setArtifactsReady(true);
+            return;
+          }
+        }
+      } catch {
+        // Transient — just try again below.
+      }
+      if (!cancelled) setTimeout(() => void tick(), 1500);
+    };
+    void tick();
+    return () => {
+      cancelled = true;
+    };
+  }, [done, artifactsReady, token]);
+
   async function acceptConsent() {
     if (!agreeChecked) return;
     setConsentBusy(true);
@@ -250,11 +291,40 @@ export function Ceremony({ token }: { token: string }) {
           </span>
           <h1 className="mt-5 text-xl font-bold text-ink">Signed — you&apos;re all done</h1>
           <p className="mt-2 text-sm text-ink-muted">
-            Your signed copy and a Certificate of Completion will be emailed to{' '}
-            <span className="font-medium text-ink">{view?.signerEmail}</span> shortly.
+            A copy and the Certificate of Completion are also on their way to{' '}
+            <span className="font-medium text-ink">{view?.signerEmail}</span>.
           </p>
+
+          {/* The signed PDF is sealed by a background job, so it appears a beat
+              after signing — we poll, then offer it rather than promising a
+              download that isn't ready. */}
+          {artifactsReady ? (
+            <div className="mt-6 flex flex-col gap-2">
+              <a
+                href={`/relay/${encodeURIComponent(token)}/signed`}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-brand-ink hover:opacity-90"
+              >
+                <Download className="h-4 w-4" />
+                Download signed document
+              </a>
+              <a
+                href={`/relay/${encodeURIComponent(token)}/certificate`}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-ink hover:bg-surface-muted"
+              >
+                <FileCheck className="h-4 w-4" />
+                Certificate of Completion
+              </a>
+            </div>
+          ) : (
+            <p className="mt-6 flex items-center justify-center gap-2 text-sm text-ink-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Preparing your signed copy…
+            </p>
+          )}
+
           <p className="mt-6 border-t border-border pt-4 text-xs text-ink-muted">
-            This signing link has now expired and cannot be opened again.
+            Keep the downloaded files for your records. This signing link cannot be used to sign
+            again.
           </p>
         </div>
       </main>

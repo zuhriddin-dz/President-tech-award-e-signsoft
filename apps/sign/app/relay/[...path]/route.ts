@@ -22,6 +22,9 @@ const MAX_SUBMIT_BYTES = 3 * 1024 * 1024;
 const ALLOWED: { method: string; tail: string | null }[] = [
   { method: 'GET', tail: null }, // /sign/<token>
   { method: 'GET', tail: 'document' }, // /sign/<token>/document
+  { method: 'GET', tail: 'status' }, // /sign/<token>/status      (post-signing)
+  { method: 'GET', tail: 'signed' }, // /sign/<token>/signed      (post-signing)
+  { method: 'GET', tail: 'certificate' }, // /sign/<token>/certificate (post-signing)
   { method: 'POST', tail: 'consent' }, // /sign/<token>/consent
   { method: 'POST', tail: 'submit' }, // /sign/<token>/submit
 ];

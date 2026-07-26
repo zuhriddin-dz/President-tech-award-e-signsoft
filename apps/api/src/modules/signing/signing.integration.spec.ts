@@ -27,7 +27,7 @@ const storage = new StorageService(context);
 const db = new TenantDb(prisma, context);
 const resolver = new SigningTokenResolver(prisma, context);
 const fakeQueue = { enqueue: async () => {} } as unknown as import('../../queue/queue.service.js').QueueService;
-const signing = new SigningService(resolver, db, storage, fakeQueue);
+const signing = new SigningService(resolver, db, storage, fakeQueue, context);
 
 // 1x1 PNG data URL — a real, minimal PNG the server-side guard accepts.
 const PNG =

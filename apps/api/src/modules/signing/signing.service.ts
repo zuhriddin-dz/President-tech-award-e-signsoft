@@ -6,6 +6,7 @@ import { COMPLETE_JOB, type CompleteSignatureJob } from '../../queue/jobs.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { StorageService } from '../../storage/storage.service.js';
 import { SigningTokenResolver } from '../../tenant/signing-token.resolver.js';
+import { TenantContext } from '../../tenant/tenant-context.js';
 import { TenantDb } from '../../tenant/tenant-db.js';
 
 // The one failure shape for the whole public surface — bad token, wrong hash,
@@ -34,6 +35,7 @@ export class SigningService {
     private readonly db: TenantDb,
     private readonly storage: StorageService,
     private readonly queue: QueueService,
+    private readonly context: TenantContext,
   ) {}
 
   /**
@@ -126,6 +128,60 @@ export class SigningService {
     };
   }
 
+  /**
+   * Post-completion status for the ceremony's download step.
+   *
+   * Deliberately does NOT use loadForToken (which fails a completed request):
+   * once signing succeeds the signer still needs their copy, so a consumed
+   * token keeps exactly this one capability — read your own signed artifacts —
+   * and nothing else. Expiry still applies, so the window is bounded.
+   */
+  async completedStatus(rawToken: string): Promise<{ ready: boolean; documentName: string }> {
+    const req = await this.loadCompleted(rawToken);
+    return { ready: Boolean(req.signedPdfKey), documentName: req.documentName };
+  }
+
+  /** Stream the signer's signed copy (or certificate) once the pipeline is done. */
+  async readCompleted(
+    rawToken: string,
+    which: 'signed' | 'certificate',
+  ): Promise<{ stream: Readable; size?: number; filename: string }> {
+    const req = await this.loadCompleted(rawToken);
+    const key = which === 'signed' ? req.signedPdfKey : req.certificateKey;
+    // Not ready yet is the same 404 as never — the client polls status first.
+    if (!key) notValid();
+    const { stream, byteLength: size } = await this.storage.getStream(key);
+    const base = req.documentName.replace(/[^A-Za-z0-9 ._-]/g, '').trim() || 'document';
+    const filename =
+      which === 'signed'
+        ? base.toLowerCase().endsWith('.pdf')
+          ? base
+          : `${base}.pdf`
+        : 'certificate-of-completion.pdf';
+    return { stream, size, filename };
+  }
+
+  /** Resolve a token whose request is COMPLETED (the only post-signing door). */
+  private async loadCompleted(rawToken: string): Promise<{
+    documentName: string;
+    signedPdfKey: string | null;
+    certificateKey: string | null;
+  }> {
+    const resolved = await this.resolver.resolve(rawToken);
+    if (!resolved) notValid();
+    const row = await this.db.tx((tx) =>
+      tx.signatureRequest.findUnique({ where: { id: resolved.requestId } }),
+    );
+    if (!row || row.signingTokenHash !== resolved.tokenHash) notValid();
+    if (row.status !== 'completed') notValid();
+    if (row.expiresAt.getTime() <= Date.now()) notValid();
+    return {
+      documentName: row.documentName,
+      signedPdfKey: row.signedPdfKey,
+      certificateKey: row.certificateKey,
+    };
+  }
+
   /** Stream the source PDF bytes for the ceremony viewer. */
   async readDocument(rawToken: string): Promise<{ stream: Readable; size?: number }> {
     const req = await this.loadForToken(rawToken);
@@ -187,9 +243,16 @@ export class SigningService {
     // is harmless and lifecycle-swept.
     if (count !== 1) notValid();
 
-    // Phase 10 performs stamp → hash → seal → certificate → email, idempotent
-    // by request id. (Processor is a stub until Phase 10.)
-    const job: CompleteSignatureJob = { requestId: req.id };
+    // stamp → hash → seal → certificate → email, off the request path and
+    // idempotent by request id. The tenant travels in the payload because a
+    // worker has no request context; it is read from the row we just verified,
+    // never from client input.
+    // The tenant comes from the context the token resolution entered — the
+    // same verified source RLS itself uses, never a client value.
+    const job: CompleteSignatureJob = {
+      requestId: req.id,
+      tenant: this.context.requireAuth().tenantId,
+    };
     await this.queue.enqueue(COMPLETE_JOB, { ...job }, `complete-${req.id}`);
 
     return { ok: true };

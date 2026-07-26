@@ -123,8 +123,18 @@ model SignatureRequest {
   signerIp          String?  @map("signer_ip")
   signerUserAgent   String?  @map("signer_user_agent")
   // Values the signer entered/auto-filled for non-signature fields, keyed by
-  // field id — stamped into the PDF in Phase 10.
+  // field id — stamped into the PDF at completion.
   fieldValues       Json     @default("{}") @map("field_values")
+  // Who sent it (captured at send time, for the certificate's "Sent by").
+  senderEmail       String?  @map("sender_email")
+
+  // Completion artifacts (Phase 10): produced by the worker after signing.
+  // The seal covers documentHash bound to this request id + completedAt.
+  signedPdfKey   String? @map("signed_pdf_key")
+  certificateKey String? @map("certificate_key")
+  documentHash   String? @map("document_hash")
+  sealSignature  String? @map("seal_signature")
+  sealKid        String? @map("seal_kid")
 
   @@index([tenantId, status, sentAt])
   @@map("signature_requests")

@@ -65,6 +65,7 @@ export class SignatureRequestsService {
           fields: template.fields ?? [],
           recipientEmail: input.recipientEmail,
           recipientName: input.recipientName ?? null,
+          senderEmail: senderName,
           signingTokenHash: sha256,
           createdByUserId: auth.userId,
           expiresAt,
