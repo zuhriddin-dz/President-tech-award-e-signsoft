@@ -105,7 +105,13 @@ export function Ceremony({ token }: { token: string }) {
           const vp = page.getViewport({ scale });
           sizes.push({ width: vp.width, height: vp.height, scale });
         }
-        if (!cancelled) setPages(sizes);
+        if (!cancelled) {
+          setPages(sizes);
+          // Loading is done once pages are MEASURED — the canvas paints in the
+          // next effect a beat later. Gating on the paint promise instead left
+          // the loading text stuck over an already-rendered document.
+          setRendering(false);
+        }
       } catch {
         if (!cancelled) {
           setDead(true);

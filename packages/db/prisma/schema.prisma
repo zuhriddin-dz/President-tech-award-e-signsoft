@@ -116,6 +116,10 @@ model SignatureRequest {
   // Signer adoption + audit, captured during the ceremony (Phase 9).
   signatureMethod   String?  @map("signature_method")
   signatureImageKey String?  @map("signature_image_key")
+  // First-view IP/UA (recorded at view) vs sign-time IP/UA (recorded at submit)
+  // — kept separate so the certificate can show both, like DocuSign.
+  viewedIp          String?  @map("viewed_ip")
+  viewedUserAgent   String?  @map("viewed_user_agent")
   signerIp          String?  @map("signer_ip")
   signerUserAgent   String?  @map("signer_user_agent")
   // Values the signer entered/auto-filled for non-signature fields, keyed by

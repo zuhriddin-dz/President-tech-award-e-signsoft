@@ -48,8 +48,11 @@ export class SigningService {
       tx.signatureRequest.findUnique({ where: { id: resolved.requestId } }),
     );
     // Re-check BY the hash (keyed compare, not a string compare) + state.
+    // Only a still-signable request resolves — a completed/voided/expired link
+    // is dead everywhere (view, document, consent, submit), the uniform 404.
+    // This closes the "source PDF still fetchable after completion" leak.
     if (!row || row.signingTokenHash !== resolved.tokenHash) notValid();
-    if (row.status === 'voided') notValid();
+    if (row.status !== 'sent' && row.status !== 'viewed') notValid();
     if (row.expiresAt.getTime() <= Date.now()) notValid();
     return {
       id: row.id,
@@ -72,7 +75,9 @@ export class SigningService {
     if (!req.consentAt) {
       await this.db.tx((tx) =>
         tx.signatureRequest.updateMany({
-          where: { id: req.id, status: { in: ['sent', 'viewed'] } },
+          // consentAt:null in the WHERE so two concurrent consent calls don't
+          // both write — the first-consent timestamp is the evidentiary one.
+          where: { id: req.id, status: { in: ['sent', 'viewed'] }, consentAt: null },
           data: { consentAt: new Date() },
         }),
       );
@@ -84,12 +89,14 @@ export class SigningService {
   async view(rawToken: string, ip: string | null, ua: string | null): Promise<SignerView> {
     const req = await this.loadForToken(rawToken);
 
-    // Record first view only while still pending — never overwrite later.
+    // Record first view only while still pending — never overwrite later. The
+    // first-view IP/UA go to viewedIp/viewedUserAgent; the sign-time IP/UA are
+    // recorded separately at submit(), so the pairing survives.
     if (req.status === 'sent') {
       await this.db.tx((tx) =>
         tx.signatureRequest.updateMany({
           where: { id: req.id, status: 'sent' },
-          data: { status: 'viewed', viewedAt: new Date(), signerIp: ip, signerUserAgent: ua },
+          data: { status: 'viewed', viewedAt: new Date(), viewedIp: ip, viewedUserAgent: ua },
         }),
       );
     }

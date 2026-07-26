@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
+import { allowRequest } from '@/lib/edge-rate-limit';
 
 /**
  * The relay. The browser talks only to this; it forwards to the main API with
@@ -77,9 +78,20 @@ async function readBounded(
   return out.buffer as ArrayBuffer;
 }
 
+/**
+ * The signer's IP for the audit trail. This box is the internet-facing EDGE, so
+ * it must NOT trust a client-supplied X-Forwarded-For — the leftmost entry is
+ * attacker-settable, and this value becomes non-repudiation evidence on the
+ * Certificate of Completion. Trust only a header a trusted upstream sets and a
+ * client cannot forge past it: Cloudflare's cf-connecting-ip (the planned CDN),
+ * or a single-value x-real-ip from a trusted reverse proxy. Otherwise 'unknown'
+ * — an honest blank, never a forgeable one.
+ */
 function clientIp(req: NextRequest): string {
-  const xff = req.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0]!.trim();
+  const cf = req.headers.get('cf-connecting-ip');
+  if (cf) return cf.trim();
+  const real = req.headers.get('x-real-ip');
+  if (real) return real.trim();
   return 'unknown';
 }
 
@@ -96,7 +108,13 @@ async function relay(
   if (!token || !TOKEN_SHAPE.test(token)) return notFound();
   if (!ALLOWED.some((a) => a.method === method && a.tail === tail)) return notFound();
 
-  // 2. Body ceiling. Content-Length is only a claim (chunked omits it); the
+  // 2. Edge rate limit, BEFORE any upstream call — a flood is shed here at the
+  // edge instead of costing a round-trip and a DB query on the API. Same 404,
+  // never a 429 (the surface reveals nothing, not even that you're limited).
+  const ip = clientIp(req);
+  if (!allowRequest(ip)) return notFound();
+
+  // 3. Body ceiling. Content-Length is only a claim (chunked omits it); the
   // real gate is the bounded read below. This is a fast reject for honest ones.
   const declared = Number(req.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > MAX_SUBMIT_BYTES) return notFound();
@@ -112,7 +130,7 @@ async function relay(
     if (FORWARDABLE_REQUEST_HEADERS.has(key.toLowerCase())) headers.set(key, value);
   }
   headers.set('x-internal-auth', RELAY_SECRET);
-  headers.set('x-client-ip', clientIp(req));
+  headers.set('x-client-ip', ip);
   headers.set('x-request-id', randomUUID());
   const ua = req.headers.get('user-agent');
   if (ua) headers.set('user-agent', ua);

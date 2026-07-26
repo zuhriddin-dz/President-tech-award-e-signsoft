@@ -1,9 +1,9 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
   Header,
+  NotFoundException,
   Param,
   Post,
   Req,
@@ -26,8 +26,10 @@ import { SigningService } from './signing.service.js';
  */
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,200}$/;
 
+// A malformed token is the uniform 404, not a 400 — a 400 would tell an
+// off-relay caller which token shapes are even considered, a small oracle.
 function badToken(token: string): void {
-  if (!TOKEN_SHAPE.test(token)) throw new BadRequestException('invalid token');
+  if (!TOKEN_SHAPE.test(token)) throw new NotFoundException();
 }
 function clientIp(req: Request): string | null {
   const supplied = req.headers['x-client-ip'];
@@ -64,9 +66,8 @@ export class SigningController {
   @Header('Cache-Control', 'no-store')
   async consent(@Param('token') token: string, @Body() body: unknown): Promise<{ ok: true }> {
     badToken(token);
-    if (!ConsentSchema.safeParse(body).success) {
-      throw new BadRequestException('consent not accepted');
-    }
+    // Uniform 404 for every failure on this surface, including a bad body.
+    if (!ConsentSchema.safeParse(body).success) throw new NotFoundException();
     return this.signing.consent(token);
   }
 
@@ -80,9 +81,9 @@ export class SigningController {
   ): Promise<{ ok: true }> {
     badToken(token);
     const parsed = SubmitSignatureSchema.safeParse(body);
-    // Generic on purpose — the field reasons would describe the accepted shape
-    // to an unauthenticated caller, and the honest client never sees this.
-    if (!parsed.success) throw new BadRequestException('That signature could not be accepted.');
+    // Uniform 404: the field reasons would describe the accepted shape to an
+    // unauthenticated caller, and the honest client never sends a bad body.
+    if (!parsed.success) throw new NotFoundException();
     return this.signing.submit(token, parsed.data as SubmitSignature, clientIp(req), userAgent(req));
   }
 }

@@ -12,6 +12,7 @@ import type { Request } from 'express';
 import { roleSatisfies } from '../auth/claims.js';
 import { ClerkService } from '../auth/clerk.service.js';
 import { env } from '../config/env.js';
+import { SlidingWindowRateLimiter } from './rate-limit.js';
 import { TenantContext } from '../tenant/tenant-context.js';
 import { TenantSyncService } from '../tenant/tenant-sync.service.js';
 
@@ -42,6 +43,11 @@ function relaySecretOk(header: string | undefined): boolean {
   const b = Buffer.from(env.SIGN_RELAY_SECRET);
   return a.length === b.length && timingSafeEqual(a, b);
 }
+
+// Per-IP limit on the public signing surface: 60 requests / minute is generous
+// for a real signer (resolve + document + consent + submit is ~4 calls) while
+// shedding floods that would otherwise each cost a token-resolution DB query.
+const SIGN_RATE_LIMITER = new SlidingWindowRateLimiter(60, 60_000);
 
 const MIN_ROLE = {
   viewer: 'VIEWER',
@@ -76,6 +82,12 @@ export class PolicyGuard implements CanActivate {
     if (policy === 'sign-relay') {
       const req = context.switchToHttp().getRequest<Request>();
       if (!relaySecretOk(req.headers['x-internal-auth'] as string | undefined)) {
+        throw new NotFoundException('This signing link is not valid.');
+      }
+      // Per-IP rate limit BEFORE the handler touches the DB — defense in depth
+      // behind the sign app's own edge limiter. Over-limit is the same 404.
+      const ip = (req.headers['x-client-ip'] as string | undefined) ?? 'unknown';
+      if (!SIGN_RATE_LIMITER.allow(ip, Date.now())) {
         throw new NotFoundException('This signing link is not valid.');
       }
       return true;
