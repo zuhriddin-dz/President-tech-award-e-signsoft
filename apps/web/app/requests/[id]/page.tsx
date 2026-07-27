@@ -66,9 +66,30 @@ export default async function RequestDetailPage({
         <Row label="Sent by" value={r.senderEmail ?? '—'} />
       </Section>
 
-      <Section title="Signer">
-        <Row label="Name" value={r.recipientName ?? '—'} />
-        <Row label="Email" value={r.recipientEmail} />
+      <Section title={r.recipients.length > 1 ? 'Recipients' : 'Signer'}>
+        {r.recipients.length > 0 ? (
+          r.recipients.map((p) => (
+            <Row
+              key={p.id}
+              label={
+                r.routingMode === 'sequential' ? `Step ${p.routingOrder}` : roleLabel(p.role)
+              }
+              value={p.name ? `${p.name} · ${p.email}` : p.email}
+              sub={[
+                p.status,
+                p.completedAt ? `signed ${fmt(p.completedAt)}` : null,
+                p.signerIp ? `from ${p.signerIp}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            />
+          ))
+        ) : (
+          <>
+            <Row label="Name" value={r.recipientName ?? '—'} />
+            <Row label="Email" value={r.recipientEmail} />
+          </>
+        )}
         <Row label="Signature method" value={methodLabel(r.signatureMethod)} />
       </Section>
 
@@ -84,6 +105,10 @@ export default async function RequestDetailPage({
       {r.status === 'completed' && <VerifyPanel requestId={r.id} detail={r} />}
     </div>
   );
+}
+
+function roleLabel(role: string): string {
+  return role === 'cc' ? 'Receives a copy' : 'Signer';
 }
 
 function methodLabel(method: string | null): string {

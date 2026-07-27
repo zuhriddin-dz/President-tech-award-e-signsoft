@@ -85,7 +85,7 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
 
       enqueued.length = 0;
       const req = await requests.send(
-        { templateId, recipientEmail: 'signer@example.com', recipientName: 'Sam' },
+        { templateId, routingMode: 'parallel', recipients: [{ email: 'signer@example.com', name: 'Sam', role: 'signer', routingOrder: 1, recipientKey: 'signer' }] },
         'sender@acme.test',
       );
       expect(req.status).toBe('sent');
@@ -93,19 +93,23 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
 
       // One invite enqueued, keyed idempotently by request id.
       expect(enqueued).toHaveLength(1);
-      expect(enqueued[0]?.key).toBe(`invite-${req.id}`);
+      // The job id now carries a per-recipient suffix (one invite per person).
+      expect(enqueued[0]?.key.startsWith(`invite-${req.id}-`)).toBe(true);
       const signUrl = enqueued[0]?.payload.signUrl as string;
       const rawToken = signUrl.split('/sign/')[1];
       expect(rawToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
-      // The stored hash equals sha256(raw token) — the raw value is NOT stored.
+      // The token now belongs to the RECIPIENT, and only its hash is stored.
       const row = await db.tx((tx) =>
         tx.signatureRequest.findUnique({
           where: { id: req.id },
-          select: { signingTokenHash: true, fields: true },
+          select: { fields: true, recipients: { select: { signingTokenHash: true, email: true } } },
         }),
       );
-      expect(row?.signingTokenHash).toBe(createHash('sha256').update(rawToken).digest('hex'));
+      expect(row?.recipients).toHaveLength(1);
+      expect(row?.recipients[0]?.signingTokenHash).toBe(
+        createHash('sha256').update(rawToken).digest('hex'),
+      );
 
       // Snapshot independence: edit the template, the request's fields are unchanged.
       const beforeLen = (row?.fields as unknown[]).length;
@@ -118,6 +122,73 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
 
       // Cleanup A.
       await db.tx((tx) => tx.signatureRequest.deleteMany({ where: { id: req.id } }));
+      const tpl = await db.tx((tx) =>
+        tx.template.findUnique({ where: { id: templateId }, select: { documentId: true } }),
+      );
+      await db.tx((tx) => tx.template.deleteMany({ where: { id: templateId } }));
+      if (tpl) {
+        const d = await db.tx((tx) =>
+          tx.document.findUnique({ where: { id: tpl.documentId }, select: { storageKey: true } }),
+        );
+        if (d) await storage.delete(d.storageKey);
+        await db.tx((tx) => tx.document.deleteMany({ where: { id: tpl.documentId } }));
+      }
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { id: tenantA } }));
+    });
+  }, 90_000);
+
+  it('sequential routing invites ONLY the first step; parallel invites everyone', async () => {
+    await cls.run(async () => {
+      enter(tenantA);
+      await seed(tenantA);
+      const templateId = await templateWithField();
+
+      // Sequential: two signers + a cc. Only step 1 gets a link now.
+      enqueued.length = 0;
+      const seq = await requests.send(
+        {
+          templateId,
+          routingMode: 'sequential',
+          recipients: [
+            { email: 'first@example.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' },
+            { email: 'second@example.com', role: 'signer', routingOrder: 2, recipientKey: 'signer' },
+            { email: 'watcher@example.com', role: 'cc', routingOrder: 2, recipientKey: 'signer' },
+          ],
+        },
+        'sender@acme.test',
+      );
+      expect(seq.signerCount).toBe(2);
+      expect(seq.signedCount).toBe(0);
+      expect(enqueued).toHaveLength(1); // only the first step is emailed
+
+      const seqRecipients = await db.tx((tx) =>
+        tx.recipient.findMany({ where: { requestId: seq.id }, orderBy: { routingOrder: 'asc' } }),
+      );
+      expect(seqRecipients.map((r) => r.status)).toEqual(['sent', 'pending', 'pending']);
+      // A later signer has NO token yet — their link cannot exist early.
+      expect(seqRecipients[0]?.signingTokenHash).toBeTruthy();
+      expect(seqRecipients[1]?.signingTokenHash).toBeNull();
+      // A cc never gets a signing link at all.
+      expect(seqRecipients[2]?.signingTokenHash).toBeNull();
+
+      // Parallel: both signers are invited immediately.
+      enqueued.length = 0;
+      const par = await requests.send(
+        {
+          templateId,
+          routingMode: 'parallel',
+          recipients: [
+            { email: 'a@example.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' },
+            { email: 'b@example.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' },
+          ],
+        },
+        'sender@acme.test',
+      );
+      expect(enqueued).toHaveLength(2);
+      expect(par.signerCount).toBe(2);
+
+      // Cleanup.
+      await db.tx((tx) => tx.signatureRequest.deleteMany({ where: { id: { in: [seq.id, par.id] } } }));
       const tpl = await db.tx((tx) =>
         tx.template.findUnique({ where: { id: templateId }, select: { documentId: true } }),
       );
@@ -150,7 +221,7 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
       const templateId = await templateWithField();
 
       await expect(
-        failing.send({ templateId, recipientEmail: 'signer@example.com' }, 'sender@acme.test'),
+        failing.send({ templateId, routingMode: 'parallel', recipients: [{ email: 'signer@example.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' }] }, 'sender@acme.test'),
       ).rejects.toMatchObject({ status: 503 });
 
       // Nothing stranded.
@@ -261,7 +332,7 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
       await seed(tenantB);
       expect(await requests.list()).toEqual([]);
       await expect(
-        requests.send({ templateId: randomUUID(), recipientEmail: 'x@y.com' }, null),
+        requests.send({ templateId: randomUUID(), routingMode: 'parallel', recipients: [{ email: 'x@y.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' }] }, null),
       ).rejects.toThrow();
       await db.tx((tx) => tx.tenant.deleteMany({ where: { id: tenantB } }));
     });

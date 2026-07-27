@@ -105,7 +105,18 @@ function RequestTable({
                       {r.documentName}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 text-ink-muted">{r.recipientEmail}</td>
+                  <td className="px-5 py-3 text-ink-muted">
+                    {r.signerCount > 1 ? (
+                      <>
+                        {r.signedCount} of {r.signerCount} signed
+                        <span className="ml-1 text-xs">
+                          ({r.routingMode === 'sequential' ? 'in order' : 'in parallel'})
+                        </span>
+                      </>
+                    ) : (
+                      r.recipientEmail
+                    )}
+                  </td>
                   <td className="px-5 py-3">
                     <StatusPill status={r.status} />
                   </td>

@@ -60,17 +60,43 @@ export async function completeSignature(tenant: string, requestId: string): Prom
   );
   if (!doc) throw new Error(`completion: document for ${requestId} not found`);
 
-  // 2. Stamp the signature + field values into the source PDF.
-  const [sourcePdf, signaturePng] = await Promise.all([
-    getObject(doc.storageKey),
-    getObject(req.signatureImageKey),
-  ]);
-  const signedPdf = await stampPdf({
-    pdfBytes: sourcePdf,
-    fields: req.fields as TemplateField[],
-    fieldValues: (req.fieldValues ?? {}) as Record<string, string>,
-    signaturePng,
-  });
+  // 2. Stamp EVERY signer's mark and values into the source PDF. Each person
+  // owns the fields carrying their recipientKey, so one pass per signer places
+  // their signature in their own boxes and nobody else's.
+  const recipients = await runInTenant(tenant, (tx) =>
+    tx.recipient.findMany({ where: { requestId: req.id }, orderBy: { routingOrder: 'asc' } }),
+  );
+  const allFields = req.fields as TemplateField[];
+  const sourcePdf = await getObject(doc.storageKey);
+
+  const signedSigners = recipients.filter(
+    (r) => r.role === 'signer' && r.status === 'completed' && r.signatureImageKey,
+  );
+  // Legacy envelopes (pre-routing) carry their signature on the request row.
+  const passes: { fields: TemplateField[]; values: Record<string, string>; imageKey: string }[] =
+    signedSigners.length > 0
+      ? signedSigners.map((r) => ({
+          fields: allFields.filter((f) => f.recipientKey === r.recipientKey),
+          values: (r.fieldValues ?? {}) as Record<string, string>,
+          imageKey: r.signatureImageKey!,
+        }))
+      : [
+          {
+            fields: allFields,
+            values: (req.fieldValues ?? {}) as Record<string, string>,
+            imageKey: req.signatureImageKey,
+          },
+        ];
+
+  let signedPdf = sourcePdf;
+  for (const pass of passes) {
+    signedPdf = await stampPdf({
+      pdfBytes: signedPdf,
+      fields: pass.fields,
+      fieldValues: pass.values,
+      signaturePng: await getObject(pass.imageKey),
+    });
+  }
 
   // 3. Fingerprint + seal. The seal is bound to THIS request and signing time,
   // so the triple cannot be lifted onto another row and still verify.
@@ -153,16 +179,27 @@ async function deliver(
     { filename: safeName(req.documentName), content: signedPdf },
     { filename: 'certificate-of-completion.pdf', content: certificatePdf },
   ];
-  await email.send({
-    ...buildSignedCopyEmail({
-      documentName: req.documentName,
-      recipientName: req.recipientName,
-      isSender: false,
-    }),
-    to: req.recipientEmail,
-    attachments,
-  });
-  if (req.senderEmail && req.senderEmail !== req.recipientEmail) {
+  // Everyone on the envelope gets the finished pair — signers AND cc — plus
+  // the sender. Deduplicated so one person on twice isn't emailed twice.
+  const audience = await runInTenant(tenant, (tx) =>
+    tx.recipient.findMany({ where: { requestId: req.id }, select: { email: true, name: true } }),
+  );
+  const seen = new Set<string>();
+  for (const person of audience.length > 0 ? audience : [{ email: req.recipientEmail, name: req.recipientName }]) {
+    const key = person.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    await email.send({
+      ...buildSignedCopyEmail({
+        documentName: req.documentName,
+        recipientName: person.name,
+        isSender: false,
+      }),
+      to: person.email,
+      attachments,
+    });
+  }
+  if (req.senderEmail && !seen.has(req.senderEmail.toLowerCase())) {
     await email.send({
       ...buildSignedCopyEmail({
         documentName: req.documentName,

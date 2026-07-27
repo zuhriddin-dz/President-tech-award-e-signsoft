@@ -38,19 +38,71 @@ export const API_PATHS = {
 export const SignatureStatusSchema = z.enum(['sent', 'viewed', 'completed', 'voided']);
 export type SignatureStatus = z.infer<typeof SignatureStatusSchema>;
 
-/** Create a signature request from a template + one recipient. */
-export const SendRequestSchema = z.object({
-  templateId: z.uuid(),
-  recipientEmail: z.email(),
-  recipientName: z.string().min(1).max(200).optional(),
+export const RecipientRoleSchema = z.enum(['signer', 'cc']);
+export type RecipientRole = z.infer<typeof RecipientRoleSchema>;
+
+export const RecipientStatusSchema = z.enum(['pending', 'sent', 'viewed', 'completed']);
+export type RecipientStatus = z.infer<typeof RecipientStatusSchema>;
+
+export const RoutingModeSchema = z.enum(['parallel', 'sequential']);
+export type RoutingMode = z.infer<typeof RoutingModeSchema>;
+
+/** One person on an envelope, as the sender specifies them. */
+export const SendRecipientSchema = z.object({
+  email: z.email(),
+  name: z.string().min(1).max(200).optional(),
+  role: RecipientRoleSchema.default('signer'),
+  /** 1-based group; everyone sharing a number is invited together. */
+  routingOrder: z.number().int().min(1).max(50).default(1),
+  /** Which field group they fill — must match a field's recipientKey. */
+  recipientKey: z.string().min(1).max(64).default('signer'),
 });
+export type SendRecipient = z.infer<typeof SendRecipientSchema>;
+
+/**
+ * Create an envelope from a template and its people. At least one signer is
+ * required — an envelope nobody can sign is never what the sender meant.
+ */
+export const SendRequestSchema = z
+  .object({
+    templateId: z.uuid(),
+    routingMode: RoutingModeSchema.default('parallel'),
+    recipients: z.array(SendRecipientSchema).min(1).max(50),
+  })
+  .refine((b) => b.recipients.some((r) => r.role === 'signer'), {
+    message: 'at least one recipient must be a signer',
+  })
+  .refine(
+    (b) => new Set(b.recipients.map((r) => r.email.toLowerCase())).size === b.recipients.length,
+    { message: 'the same email cannot appear twice on one envelope' },
+  );
 export type SendRequest = z.infer<typeof SendRequestSchema>;
+
+/** A recipient as the sender's dashboard sees them (no tokens, ever). */
+export const RecipientSchema = z.object({
+  id: z.uuid(),
+  email: z.email(),
+  name: z.string().nullable(),
+  role: RecipientRoleSchema,
+  routingOrder: z.number().int(),
+  status: RecipientStatusSchema,
+  sentAt: z.iso.datetime().nullable(),
+  viewedAt: z.iso.datetime().nullable(),
+  completedAt: z.iso.datetime().nullable(),
+  signerIp: z.string().nullable(),
+});
+export type Recipient = z.infer<typeof RecipientSchema>;
 
 export const SignatureRequestSchema = z.object({
   id: z.uuid(),
   documentName: z.string(),
+  /** The first signer — kept for compact list rows. */
   recipientEmail: z.email(),
   recipientName: z.string().nullable(),
+  routingMode: RoutingModeSchema,
+  /** How many signers have finished, out of how many are required. */
+  signedCount: z.number().int().nonnegative(),
+  signerCount: z.number().int().nonnegative(),
   status: SignatureStatusSchema,
   sentAt: z.iso.datetime(),
   viewedAt: z.iso.datetime().nullable(),
@@ -70,6 +122,8 @@ export type SignatureRequestList = z.infer<typeof SignatureRequestListSchema>;
  */
 export const SignatureRequestDetailSchema = SignatureRequestSchema.extend({
   senderEmail: z.string().nullable(),
+  /** Everyone on the envelope, in routing order. */
+  recipients: z.array(RecipientSchema),
   consentAt: z.iso.datetime().nullable(),
   signatureMethod: z.string().nullable(),
   viewedIp: z.string().nullable(),

@@ -78,8 +78,9 @@ model Document {
   @@map("documents")
 }
 
-// Lifecycle of one signature request. `completed` is terminal-success;
-// `voided` is terminal-cancel. Proof fields fill in on completion (Phase 10).
+// Lifecycle of one signature request (the ENVELOPE). `completed` is
+// terminal-success; `voided` is terminal-cancel. Proof fields fill in on
+// completion, once every required signer is done.
 enum SignatureStatus {
   sent
   viewed
@@ -87,6 +88,79 @@ enum SignatureStatus {
   voided
 
   @@map("signature_status")
+}
+
+/** What a recipient is there to do. */
+enum RecipientRole {
+  /// Must sign; the envelope cannot complete without them.
+  signer
+  /// Receives the finished document; never signs, never blocks.
+  cc
+
+  @@map("recipient_role")
+}
+
+/** Per-recipient lifecycle. `pending` = not yet their turn (sequential). */
+enum RecipientStatus {
+  pending
+  sent
+  viewed
+  completed
+
+  @@map("recipient_status")
+}
+
+/**
+ * How an envelope reaches its recipients. `parallel` invites everyone at once;
+ * `sequential` invites routingOrder 1, and only when that group finishes does
+ * the next group get its links — the ordered signing DocuSign calls routing.
+ */
+enum RoutingMode {
+  parallel
+  sequential
+
+  @@map("routing_mode")
+}
+
+/**
+ * One person on an envelope. Each carries their OWN signing token (hashed),
+ * their own ceremony audit trail, and their own field values — so "who signed
+ * what, when, from where" stays per-person, which is exactly what the
+ * Certificate of Completion has to show for a multi-party agreement.
+ */
+model Recipient {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
+  requestId String           @map("request_id") @db.Uuid
+  request   SignatureRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  email String
+  name  String?
+  role  RecipientRole @default(signer)
+  /// 1-based group; everyone sharing a number is invited together.
+  routingOrder Int    @default(1) @map("routing_order")
+  /// Which field group this person fills (matches TemplateField.recipientKey).
+  recipientKey String @map("recipient_key")
+
+  status RecipientStatus @default(pending)
+  /// sha256 of THIS recipient's signing token — minted when they're invited.
+  signingTokenHash String? @unique @map("signing_token_hash")
+
+  sentAt      DateTime? @map("sent_at")
+  viewedAt    DateTime? @map("viewed_at")
+  consentAt   DateTime? @map("consent_at")
+  completedAt DateTime? @map("completed_at")
+
+  signatureMethod   String? @map("signature_method")
+  signatureImageKey String? @map("signature_image_key")
+  fieldValues       Json    @default("{}") @map("field_values")
+  viewedIp          String? @map("viewed_ip")
+  viewedUserAgent   String? @map("viewed_user_agent")
+  signerIp          String? @map("signer_ip")
+  signerUserAgent   String? @map("signer_user_agent")
+
+  @@index([tenantId, requestId, routingOrder])
+  @@map("recipients")
 }
 
 // One document sent to one signer. The source document + field layout are
@@ -102,10 +176,15 @@ model SignatureRequest {
   documentName     String          @map("document_name")
   // Snapshot of the template's field layout at send time (contract shape).
   fields           Json
+  // How this envelope reaches its people, and who they are.
+  routingMode      RoutingMode     @default(parallel) @map("routing_mode")
+  recipients       Recipient[]
+  // LEGACY single-recipient columns — kept so old rows stay readable; every
+  // new envelope carries its people in `recipients`. Removed once nothing
+  // reads them.
   recipientEmail   String          @map("recipient_email")
   recipientName    String?         @map("recipient_name")
-  // sha256 of the signing token — the only form stored, unique for lookup.
-  signingTokenHash String          @unique @map("signing_token_hash")
+  signingTokenHash String?         @unique @map("signing_token_hash")
   status           SignatureStatus @default(sent)
   createdByUserId  String          @map("created_by_user_id") @db.Uuid
   expiresAt        DateTime        @map("expires_at")

@@ -9,7 +9,14 @@ import {
 import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
 import { SealService, mintSigningToken } from '@docflow/crypto';
-import type { SendRequest, SignatureStatus, VerifyResult } from '@docflow/contracts';
+import type {
+  RecipientRole,
+  RecipientStatus,
+  RoutingMode,
+  SendRequest,
+  SignatureStatus,
+  VerifyResult,
+} from '@docflow/contracts';
 import { StorageService } from '../../storage/storage.service.js';
 import { env } from '../../config/env.js';
 import { INVITE_JOB, type SigningInviteJob } from '../../queue/jobs.js';
@@ -20,11 +27,23 @@ import { TenantDb } from '../../tenant/tenant-db.js';
 /** Ceiling on what verify() will stream-hash — well above any real document. */
 const MAX_VERIFY_BYTES = 64 * 1024 * 1024;
 
+/**
+ * A short, id-safe token for an email address, used only to build a
+ * deterministic BullMQ job id (which may not contain ':' — and an email may).
+ * Not a security boundary; just a stable per-recipient suffix.
+ */
+function hashEmailForKey(email: string): string {
+  return createHash('sha256').update(email.toLowerCase()).digest('hex').slice(0, 16);
+}
+
 export interface SignatureRequestWire {
   id: string;
   documentName: string;
   recipientEmail: string;
   recipientName: string | null;
+  routingMode: RoutingMode;
+  signedCount: number;
+  signerCount: number;
   status: SignatureStatus;
   sentAt: string;
   viewedAt: string | null;
@@ -32,8 +51,22 @@ export interface SignatureRequestWire {
   expiresAt: string;
 }
 
+export interface RecipientWire {
+  id: string;
+  email: string;
+  name: string | null;
+  role: RecipientRole;
+  routingOrder: number;
+  status: RecipientStatus;
+  sentAt: string | null;
+  viewedAt: string | null;
+  completedAt: string | null;
+  signerIp: string | null;
+}
+
 export interface SignatureRequestDetailWire extends SignatureRequestWire {
   senderEmail: string | null;
+  recipients: RecipientWire[];
   consentAt: string | null;
   signatureMethod: string | null;
   viewedIp: string | null;
@@ -75,43 +108,76 @@ export class SignatureRequestsService {
       throw new BadRequestException('template has no fields to sign');
     }
 
-    // The raw token exists only here; only its hash is persisted.
-    const { token, sha256 } = mintSigningToken();
     const expiresAt = new Date(Date.now() + env.ESIGN_LINK_TTL_DAYS * 86_400_000);
+    const firstSigner =
+      input.recipients.find((r) => r.role === 'signer') ?? input.recipients[0]!;
 
-    const row = await this.db.tx((tx) =>
-      tx.signatureRequest.create({
+    // Everyone in the first routing group is invited now; in sequential mode
+    // later groups stay `pending` until the group before them finishes.
+    const firstOrder = Math.min(...input.recipients.map((r) => r.routingOrder));
+    const invitedNow = (r: { routingOrder: number }) =>
+      input.routingMode === 'parallel' || r.routingOrder === firstOrder;
+
+    // Mint a token per recipient we're inviting; raw values exist only here.
+    const tokens = new Map<string, { token: string; sha256: string }>();
+    for (const r of input.recipients) {
+      if (invitedNow(r) && r.role === 'signer') tokens.set(r.email, mintSigningToken());
+    }
+
+    const row = await this.db.tx(async (tx) => {
+      const created = await tx.signatureRequest.create({
         data: {
           templateId: input.templateId,
           documentId: template.documentId,
           documentName: template.name,
           fields: template.fields ?? [],
-          recipientEmail: input.recipientEmail,
-          recipientName: input.recipientName ?? null,
+          routingMode: input.routingMode,
+          recipientEmail: firstSigner.email,
+          recipientName: firstSigner.name ?? null,
           senderEmail: senderName,
-          signingTokenHash: sha256,
           createdByUserId: auth.userId,
           expiresAt,
         },
-      }),
-    );
+      });
+      await tx.recipient.createMany({
+        data: input.recipients.map((r) => ({
+          requestId: created.id,
+          email: r.email,
+          name: r.name ?? null,
+          role: r.role,
+          routingOrder: r.routingOrder,
+          recipientKey: r.recipientKey,
+          status: invitedNow(r) && r.role === 'signer' ? 'sent' : 'pending',
+          signingTokenHash: tokens.get(r.email)?.sha256 ?? null,
+          sentAt: invitedNow(r) && r.role === 'signer' ? new Date() : null,
+        })),
+      });
+      return created;
+    });
 
     // Off the request path: the invite email is a retryable job. The raw token
     // rides in the payload (Redis, our trusted infra) inside the sign URL;
     // removeOnComplete/Fail keep it from lingering after the job resolves.
-    const job: SigningInviteJob = {
-      to: input.recipientEmail,
-      recipientName: input.recipientName ?? null,
-      documentName: template.name,
-      senderName,
-      signUrl: `${env.SIGN_APP_URL}/sign/${token}`,
-    };
-    // Hyphen, not colon — BullMQ custom job ids may not contain ':'.
+    // One invite per signer in the first group. Hyphen, not colon — BullMQ
+    // custom job ids may not contain ':'.
     try {
-      await this.queue.enqueue(INVITE_JOB, { ...job }, `invite-${row.id}`, {
-        removeOnComplete: true,
-        removeOnFail: true,
-      });
+      for (const r of input.recipients) {
+        const minted = tokens.get(r.email);
+        if (!minted) continue; // cc, or a later routing group
+        const job: SigningInviteJob = {
+          to: r.email,
+          recipientName: r.name ?? null,
+          documentName: template.name,
+          senderName,
+          signUrl: `${env.SIGN_APP_URL}/sign/${minted.token}`,
+        };
+        await this.queue.enqueue(
+          INVITE_JOB,
+          { ...job },
+          `invite-${row.id}-${hashEmailForKey(r.email)}`,
+          { removeOnComplete: true, removeOnFail: true },
+        );
+      }
     } catch (cause) {
       // The invite is the whole point of a send. If it cannot be queued (Redis
       // down/unreachable), roll the request back rather than leaving a phantom
@@ -124,16 +190,25 @@ export class SignatureRequestsService {
       );
     }
 
-    return toWire(row);
+    const withRecipients = await this.db.tx((tx) =>
+      tx.signatureRequest.findUnique({ where: { id: row.id }, include: { recipients: true } }),
+    );
+    return toWire(withRecipients ?? { ...row, recipients: [] });
   }
 
   /** The full audit record for one request (RLS-scoped; foreign id → 404). */
   async detail(id: string): Promise<SignatureRequestDetailWire> {
-    const row = await this.db.tx((tx) => tx.signatureRequest.findUnique({ where: { id } }));
+    const row = await this.db.tx((tx) =>
+      tx.signatureRequest.findUnique({
+        where: { id },
+        include: { recipients: { orderBy: { routingOrder: 'asc' } } },
+      }),
+    );
     if (!row) throw new NotFoundException();
     return {
       ...toWire(row),
       senderEmail: row.senderEmail,
+      recipients: row.recipients.map(recipientToWire),
       consentAt: row.consentAt?.toISOString() ?? null,
       signatureMethod: row.signatureMethod,
       viewedIp: row.viewedIp,
@@ -230,7 +305,11 @@ export class SignatureRequestsService {
 
   async list(): Promise<SignatureRequestWire[]> {
     const rows = await this.db.tx((tx) =>
-      tx.signatureRequest.findMany({ orderBy: { sentAt: 'desc' }, take: 200 }),
+      tx.signatureRequest.findMany({
+        orderBy: { sentAt: 'desc' },
+        take: 200,
+        include: { recipients: true },
+      }),
     );
     return rows.map(toWire);
   }
@@ -241,21 +320,55 @@ function toWire(row: {
   documentName: string;
   recipientEmail: string;
   recipientName: string | null;
+  routingMode: string;
+  recipients?: { role: string; status: string }[];
   status: string;
   sentAt: Date;
   viewedAt: Date | null;
   completedAt: Date | null;
   expiresAt: Date;
 }): SignatureRequestWire {
+  // Progress counts only ever consider SIGNERS — a cc never blocks an envelope
+  // and must not make it look unfinished.
+  const signers = (row.recipients ?? []).filter((r) => r.role === 'signer');
   return {
     id: row.id,
     documentName: row.documentName,
     recipientEmail: row.recipientEmail,
     recipientName: row.recipientName,
+    routingMode: row.routingMode as RoutingMode,
+    signedCount: signers.filter((r) => r.status === 'completed').length,
+    signerCount: signers.length,
     status: row.status as SignatureStatus,
     sentAt: row.sentAt.toISOString(),
     viewedAt: row.viewedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
     expiresAt: row.expiresAt.toISOString(),
+  };
+}
+
+function recipientToWire(r: {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  routingOrder: number;
+  status: string;
+  sentAt: Date | null;
+  viewedAt: Date | null;
+  completedAt: Date | null;
+  signerIp: string | null;
+}): RecipientWire {
+  return {
+    id: r.id,
+    email: r.email,
+    name: r.name,
+    role: r.role as RecipientRole,
+    routingOrder: r.routingOrder,
+    status: r.status as RecipientStatus,
+    sentAt: r.sentAt?.toISOString() ?? null,
+    viewedAt: r.viewedAt?.toISOString() ?? null,
+    completedAt: r.completedAt?.toISOString() ?? null,
+    signerIp: r.signerIp,
   };
 }

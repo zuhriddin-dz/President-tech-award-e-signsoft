@@ -1,9 +1,15 @@
 import type { Readable } from 'node:stream';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { decodeSignaturePng } from '@docflow/crypto';
+import { decodeSignaturePng, mintSigningToken } from '@docflow/crypto';
 import { resolveFieldValues } from './field-values.js';
 import type { SignerView, SubmitSignature, TemplateField } from '@docflow/contracts';
-import { COMPLETE_JOB, type CompleteSignatureJob } from '../../queue/jobs.js';
+import { env } from '../../config/env.js';
+import {
+  COMPLETE_JOB,
+  INVITE_JOB,
+  type CompleteSignatureJob,
+  type SigningInviteJob,
+} from '../../queue/jobs.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { StorageService } from '../../storage/storage.service.js';
 import { SigningTokenResolver } from '../../tenant/signing-token.resolver.js';
@@ -12,17 +18,36 @@ import { TenantDb } from '../../tenant/tenant-db.js';
 
 // The one failure shape for the whole public surface — bad token, wrong hash,
 // expired, voided, already-claimed: all this, never anything more specific.
+interface PendingInvite {
+  id: string;
+  email: string;
+  name: string | null;
+  token: string;
+}
+
 function notValid(): never {
   throw new NotFoundException('This signing link is not valid.');
 }
 
+/**
+ * One person's view of an envelope, resolved from THEIR token.
+ *
+ * An envelope has many recipients, each with their own link, their own consent
+ * and their own fields — so everything the ceremony does is scoped to the
+ * recipient, not the envelope. `recipientId` is null only for legacy
+ * single-recipient links minted before routing existed.
+ */
 interface LoadedRequest {
   id: string;
   documentId: string;
   documentName: string;
+  /** Only the fields THIS person fills. */
   fields: TemplateField[];
+  recipientId: string | null;
+  recipientKey: string;
   recipientName: string | null;
   recipientEmail: string;
+  /** The recipient's own lifecycle state (sent/viewed/completed). */
   status: string;
   expiresAt: Date;
   consentAt: Date | null;
@@ -56,14 +81,47 @@ export class SigningService {
     // Only a still-signable request resolves — a completed/voided/expired link
     // is dead everywhere (view, document, consent, submit), the uniform 404.
     // This closes the "source PDF still fetchable after completion" leak.
-    if (!row || row.signingTokenHash !== resolved.tokenHash) notValid();
-    if (row.status !== 'sent' && row.status !== 'viewed') notValid();
+    if (!row) notValid();
     if (row.expiresAt.getTime() <= Date.now()) notValid();
+    if (row.status === 'voided') notValid();
+    const allFields = row.fields as TemplateField[];
+
+    // The new world: the token belongs to ONE person on the envelope. Their own
+    // row carries the authoritative hash and state, and they see only their own
+    // fields — one recipient can never sign in another's place.
+    if (resolved.recipientId) {
+      const rc = await this.db.tx((tx) =>
+        tx.recipient.findUnique({ where: { id: resolved.recipientId! } }),
+      );
+      if (!rc || rc.requestId !== row.id) notValid();
+      if (rc.signingTokenHash !== resolved.tokenHash) notValid();
+      if (rc.status !== 'sent' && rc.status !== 'viewed') notValid();
+      return {
+        id: row.id,
+        documentId: row.documentId,
+        documentName: row.documentName,
+        fields: allFields.filter((f) => f.recipientKey === rc.recipientKey),
+        recipientId: rc.id,
+        recipientKey: rc.recipientKey,
+        recipientName: rc.name,
+        recipientEmail: rc.email,
+        status: rc.status,
+        expiresAt: row.expiresAt,
+        consentAt: rc.consentAt,
+        signingTokenHash: rc.signingTokenHash,
+      };
+    }
+
+    // Legacy single-recipient link (minted before routing existed).
+    if (row.signingTokenHash !== resolved.tokenHash) notValid();
+    if (row.status !== 'sent' && row.status !== 'viewed') notValid();
     return {
       id: row.id,
       documentId: row.documentId,
       documentName: row.documentName,
-      fields: row.fields as TemplateField[],
+      fields: allFields,
+      recipientId: null,
+      recipientKey: 'signer',
       recipientName: row.recipientName,
       recipientEmail: row.recipientEmail,
       status: row.status,
@@ -73,18 +131,110 @@ export class SigningService {
     };
   }
 
+  /**
+   * A person just finished. Decide what the envelope does next.
+   *
+   * - Every signer done  → the envelope completes (the caller then seals it).
+   * - Sequential routing → the next group's signers are invited now; their
+   *   tokens are minted here, so a link exists only once it's that person's
+   *   turn (a later signer's link cannot be used early — it doesn't exist).
+   * - Parallel routing    → nothing to advance; others are already signing.
+   */
+  private async advanceEnvelope(
+    requestId: string,
+    now: Date,
+  ): Promise<{ envelopeComplete: boolean; invites: PendingInvite[] }> {
+    return this.db.tx(async (tx) => {
+      const request = await tx.signatureRequest.findUnique({
+        where: { id: requestId },
+        include: { recipients: { orderBy: { routingOrder: 'asc' } } },
+      });
+      if (!request) return { envelopeComplete: false, invites: [] };
+
+      const signers = request.recipients.filter((r) => r.role === 'signer');
+      if (signers.every((r) => r.status === 'completed')) {
+        await tx.signatureRequest.updateMany({
+          where: { id: requestId, status: { in: ['sent', 'viewed'] } },
+          data: { status: 'completed', completedAt: now },
+        });
+        return { envelopeComplete: true, invites: [] };
+      }
+
+      if (request.routingMode !== 'sequential') {
+        return { envelopeComplete: false, invites: [] };
+      }
+
+      // The next group is the lowest order that still has someone waiting.
+      const waiting = request.recipients.filter((r) => r.status === 'pending');
+      if (waiting.length === 0) return { envelopeComplete: false, invites: [] };
+      const nextOrder = Math.min(...waiting.map((r) => r.routingOrder));
+      // Don't hand off while anyone in an earlier group is still signing.
+      const earlierUnfinished = request.recipients.some(
+        (r) => r.role === 'signer' && r.routingOrder < nextOrder && r.status !== 'completed',
+      );
+      if (earlierUnfinished) return { envelopeComplete: false, invites: [] };
+
+      const invites: PendingInvite[] = [];
+      for (const r of waiting.filter((r) => r.routingOrder === nextOrder)) {
+        if (r.role !== 'signer') {
+          // A cc in this group simply becomes active; they receive the finished
+          // document at completion, not a signing link.
+          await tx.recipient.updateMany({ where: { id: r.id }, data: { status: 'sent', sentAt: now } });
+          continue;
+        }
+        const minted = mintSigningToken();
+        await tx.recipient.updateMany({
+          where: { id: r.id, status: 'pending' },
+          data: { status: 'sent', sentAt: now, signingTokenHash: minted.sha256 },
+        });
+        invites.push({ id: r.id, email: r.email, name: r.name, token: minted.token });
+      }
+      return { envelopeComplete: false, invites };
+    });
+  }
+
+  /** Queue one signing invite (off the request path, like the initial send). */
+  private async sendInvite(documentName: string, invite: PendingInvite): Promise<void> {
+    const job: SigningInviteJob = {
+      to: invite.email,
+      recipientName: invite.name,
+      documentName,
+      senderName: null,
+      signUrl: `${env.SIGN_APP_URL}/sign/${invite.token}`,
+    };
+    try {
+      await this.queue.enqueue(INVITE_JOB, { ...job }, `invite-${invite.id}`, {
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    } catch (cause) {
+      // The signature that triggered this is already committed; failing the
+      // signer would be a lie. The token is minted and stored, so the invite
+      // can be re-sent — log loudly rather than losing the signature.
+      this.logger.error(
+        `routing invite enqueue failed for recipient ${invite.id}: ${(cause as Error).message}`,
+      );
+    }
+  }
+
   /** Record consent to sign electronically — before any field is filled. */
   async consent(rawToken: string): Promise<{ ok: true }> {
     const req = await this.loadForToken(rawToken);
     if (req.status !== 'sent' && req.status !== 'viewed') notValid();
     if (!req.consentAt) {
+      // consentAt:null in the WHERE so two concurrent consent calls don't both
+      // write — the first-consent timestamp is the evidentiary one. Consent is
+      // PER PERSON: each recipient agrees for themselves.
       await this.db.tx((tx) =>
-        tx.signatureRequest.updateMany({
-          // consentAt:null in the WHERE so two concurrent consent calls don't
-          // both write — the first-consent timestamp is the evidentiary one.
-          where: { id: req.id, status: { in: ['sent', 'viewed'] }, consentAt: null },
-          data: { consentAt: new Date() },
-        }),
+        req.recipientId
+          ? tx.recipient.updateMany({
+              where: { id: req.recipientId, status: { in: ['sent', 'viewed'] }, consentAt: null },
+              data: { consentAt: new Date() },
+            })
+          : tx.signatureRequest.updateMany({
+              where: { id: req.id, status: { in: ['sent', 'viewed'] }, consentAt: null },
+              data: { consentAt: new Date() },
+            }),
       );
     }
     return { ok: true };
@@ -98,12 +248,25 @@ export class SigningService {
     // first-view IP/UA go to viewedIp/viewedUserAgent; the sign-time IP/UA are
     // recorded separately at submit(), so the pairing survives.
     if (req.status === 'sent') {
-      await this.db.tx((tx) =>
-        tx.signatureRequest.updateMany({
-          where: { id: req.id, status: 'sent' },
-          data: { status: 'viewed', viewedAt: new Date(), viewedIp: ip, viewedUserAgent: ua },
-        }),
-      );
+      const now = new Date();
+      await this.db.tx(async (tx) => {
+        if (req.recipientId) {
+          await tx.recipient.updateMany({
+            where: { id: req.recipientId, status: 'sent' },
+            data: { status: 'viewed', viewedAt: now, viewedIp: ip, viewedUserAgent: ua },
+          });
+          // The envelope follows its people: the first view by anyone moves it.
+          await tx.signatureRequest.updateMany({
+            where: { id: req.id, status: 'sent' },
+            data: { status: 'viewed', viewedAt: now },
+          });
+        } else {
+          await tx.signatureRequest.updateMany({
+            where: { id: req.id, status: 'sent' },
+            data: { status: 'viewed', viewedAt: now, viewedIp: ip, viewedUserAgent: ua },
+          });
+        }
+      });
     }
 
     // Page geometry comes from the source document's template snapshot; the
@@ -234,28 +397,51 @@ export class SigningService {
     const signatureKey = this.storage.newKey('signatures');
     await this.storage.put(signatureKey, png, 'image/png');
 
+    // The atomic claim, PER PERSON: the WHERE is the check, so only a
+    // still-signable row holding THIS token flips, and only once.
+    const claimData = {
+      status: 'completed' as const,
+      completedAt: now,
+      signatureMethod: dto.method,
+      signatureImageKey: signatureKey,
+      fieldValues: resolved.values,
+      signerIp: ip,
+      signerUserAgent: ua,
+    };
     const { count } = await this.db.tx((tx) =>
-      tx.signatureRequest.updateMany({
-        // The WHERE is the check: only a still-signable row with THIS token flips.
-        where: {
-          id: req.id,
-          signingTokenHash: req.signingTokenHash,
-          status: { in: ['sent', 'viewed'] },
-        },
-        data: {
-          status: 'completed',
-          completedAt: now,
-          signatureMethod: dto.method,
-          signatureImageKey: signatureKey,
-          fieldValues: resolved.values,
-          signerIp: ip,
-          signerUserAgent: ua,
-        },
-      }),
+      req.recipientId
+        ? tx.recipient.updateMany({
+            where: {
+              id: req.recipientId,
+              signingTokenHash: req.signingTokenHash,
+              status: { in: ['sent', 'viewed'] },
+            },
+            data: claimData,
+          })
+        : tx.signatureRequest.updateMany({
+            where: {
+              id: req.id,
+              signingTokenHash: req.signingTokenHash,
+              status: { in: ['sent', 'viewed'] },
+            },
+            data: claimData,
+          }),
     );
     // Lost the race (or already done/expired): uniform 404. The orphaned PNG
     // is harmless and lifecycle-swept.
     if (count !== 1) notValid();
+
+    // One person is done. Either the envelope hands off to its next routing
+    // group, or — when every signer has finished — it completes and is sealed.
+    if (req.recipientId) {
+      const advanced = await this.advanceEnvelope(req.id, now);
+      if (!advanced.envelopeComplete) {
+        for (const invite of advanced.invites) {
+          await this.sendInvite(req.documentName, invite);
+        }
+        return { ok: true };
+      }
+    }
 
     // stamp → hash → seal → certificate → email, off the request path and
     // idempotent by request id. The tenant travels in the payload because a

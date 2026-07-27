@@ -21,6 +21,8 @@ import { TenantContext } from './tenant-context.js';
  */
 export interface ResolvedToken {
   requestId: string;
+  /** Which person on the envelope holds this token (null = legacy link). */
+  recipientId: string | null;
   tokenHash: string;
 }
 
@@ -33,11 +35,12 @@ export class SigningTokenResolver {
 
   async resolve(rawToken: string): Promise<ResolvedToken | null> {
     const tokenHash = hashSigningToken(rawToken);
-    const rows = await this.prisma.$queryRaw<{ tenant_id: string; request_id: string }[]>`
-      SELECT tenant_id, request_id FROM public.resolve_signing_token(${tokenHash})`;
+    const rows = await this.prisma.$queryRaw<
+      { tenant_id: string; request_id: string; recipient_id: string | null }[]
+    >`SELECT tenant_id, request_id, recipient_id FROM public.resolve_signing_token(${tokenHash})`;
     const row = rows[0];
     if (!row) return null;
     this.context.enterAsSigner(row.tenant_id);
-    return { requestId: row.request_id, tokenHash };
+    return { requestId: row.request_id, recipientId: row.recipient_id, tokenHash };
   }
 }
