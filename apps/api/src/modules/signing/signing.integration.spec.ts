@@ -131,7 +131,9 @@ describe.skipIf(!live)('public signing surface (live)', () => {
     expect(row?.status).toBe('completed');
     expect(row?.signatureMethod).toBe('typed');
     expect(row?.consentAt).not.toBeNull();
-    expect((row?.fieldValues as Record<string, string>).note).toBe('ok');
+    // 'note' is NOT in this request's field snapshot, so the server drops it:
+    // a signer cannot smuggle values for fields the sender never placed.
+    expect((row?.fieldValues as Record<string, string>).note).toBeUndefined();
     expect(row?.signatureImageKey).toContain(`tenants/${tenantId}/signatures/`);
   }, 90_000);
 

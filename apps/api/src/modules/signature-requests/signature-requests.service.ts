@@ -3,10 +3,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import type { Readable } from 'node:stream';
-import { SealService, mintSigningToken, sha256Hex } from '@docflow/crypto';
+import { SealService, mintSigningToken } from '@docflow/crypto';
 import type { SendRequest, SignatureStatus, VerifyResult } from '@docflow/contracts';
 import { StorageService } from '../../storage/storage.service.js';
 import { env } from '../../config/env.js';
@@ -14,6 +16,9 @@ import { INVITE_JOB, type SigningInviteJob } from '../../queue/jobs.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
 import { TenantDb } from '../../tenant/tenant-db.js';
+
+/** Ceiling on what verify() will stream-hash — well above any real document. */
+const MAX_VERIFY_BYTES = 64 * 1024 * 1024;
 
 export interface SignatureRequestWire {
   id: string;
@@ -185,10 +190,26 @@ export class SignatureRequestsService {
       };
     }
 
+    // Hash the stored bytes as they STREAM — never buffer the whole file.
+    // Buffering here let any viewer pin an arbitrarily large object in the
+    // shared API process (an OOM lever affecting every tenant); a running
+    // digest is constant-memory, and the cap stops a pathological object.
     const { stream } = await this.storage.getStream(row.signedPdfKey);
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) chunks.push(chunk as Buffer);
-    const computedHash = sha256Hex(Buffer.concat(chunks));
+    const digest = createHash('sha256');
+    let read = 0;
+    try {
+      for await (const chunk of stream) {
+        read += (chunk as Buffer).length;
+        if (read > MAX_VERIFY_BYTES) {
+          stream.destroy();
+          throw new PayloadTooLargeException('stored document is too large to verify');
+        }
+        digest.update(chunk as Buffer);
+      }
+    } finally {
+      stream.destroy();
+    }
+    const computedHash = digest.digest('hex');
 
     const hashMatches = computedHash === row.documentHash;
     const sealValid = this.seal.verify(

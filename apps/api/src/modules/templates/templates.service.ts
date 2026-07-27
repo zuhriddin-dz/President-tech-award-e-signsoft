@@ -40,8 +40,13 @@ export class TemplatesService {
     let geometry;
     try {
       geometry = await readPdfGeometry(bytes);
-    } catch {
-      throw new BadRequestException('file is not a readable PDF');
+    } catch (cause) {
+      // Surface the specific reason when we have one (rotated pages, too many
+      // pages) — the sender can act on it; a generic message can't be acted on.
+      const reason = (cause as Error).message;
+      throw new BadRequestException(
+        /rotated|exceeds|no pages/.test(reason) ? reason : 'file is not a readable PDF',
+      );
     }
 
     // Reuse the documents pipeline: magic-byte gate, sha256, R2 put, RLS row.

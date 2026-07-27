@@ -1,6 +1,7 @@
 import type { Readable } from 'node:stream';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { decodeSignaturePng } from '@docflow/crypto';
+import { resolveFieldValues } from './field-values.js';
 import type { SignerView, SubmitSignature, TemplateField } from '@docflow/contracts';
 import { COMPLETE_JOB, type CompleteSignatureJob } from '../../queue/jobs.js';
 import { QueueService } from '../../queue/queue.service.js';
@@ -30,6 +31,8 @@ interface LoadedRequest {
 
 @Injectable()
 export class SigningService {
+  private readonly logger = new Logger(SigningService.name);
+
   constructor(
     private readonly resolver: SigningTokenResolver,
     private readonly db: TenantDb,
@@ -214,12 +217,23 @@ export class SigningService {
     const png = decodeSignaturePng(dto.signatureImage);
     if (!png) notValid();
 
+    const now = new Date();
+    // The signer does NOT get to author the date/name/email that end up in the
+    // sealed document — those are computed here from the request row. Client
+    // values survive only for genuinely free-form inputs, and only for fields
+    // the snapshot knows. Required inputs must be filled.
+    const resolved = resolveFieldValues(req.fields, dto.fieldValues, {
+      recipientName: req.recipientName,
+      recipientEmail: req.recipientEmail,
+      signedAt: now,
+    });
+    if (resolved.missingRequired.length > 0) notValid();
+
     // Bytes land in storage first; a crash before the claim leaves an orphan
     // object (lifecycle-swept), never a claimed request with no signature.
     const signatureKey = this.storage.newKey('signatures');
     await this.storage.put(signatureKey, png, 'image/png');
 
-    const now = new Date();
     const { count } = await this.db.tx((tx) =>
       tx.signatureRequest.updateMany({
         // The WHERE is the check: only a still-signable row with THIS token flips.
@@ -233,7 +247,7 @@ export class SigningService {
           completedAt: now,
           signatureMethod: dto.method,
           signatureImageKey: signatureKey,
-          fieldValues: dto.fieldValues,
+          fieldValues: resolved.values,
           signerIp: ip,
           signerUserAgent: ua,
         },
@@ -253,7 +267,19 @@ export class SigningService {
       requestId: req.id,
       tenant: this.context.requireAuth().tenantId,
     };
-    await this.queue.enqueue(COMPLETE_JOB, { ...job }, `complete-${req.id}`);
+    try {
+      await this.queue.enqueue(COMPLETE_JOB, { ...job }, `complete-${req.id}`);
+    } catch (cause) {
+      // The signature is ALREADY committed and legally complete — failing the
+      // signer here would be a lie, and rolling back would destroy real
+      // evidence. So we swallow the enqueue failure and let the reconciler
+      // (worker) pick the request up: it sweeps completed rows that have no
+      // sealed artifacts. The ceremony's "preparing your copy" state covers
+      // the delay.
+      this.logger.error(
+        `completion enqueue failed for ${req.id} — left for the reconciler: ${(cause as Error).message}`,
+      );
+    }
 
     return { ok: true };
   }

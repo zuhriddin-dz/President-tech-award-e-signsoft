@@ -34,10 +34,25 @@ export async function completeSignature(tenant: string, requestId: string): Prom
     tx.signatureRequest.findUnique({ where: { id: requestId } }),
   );
   if (!req) throw new Error(`completion: request ${requestId} not found`);
-  if (req.signedPdfKey) return; // already completed — idempotent no-op
+  // Fully done only when BOTH the artifacts exist and the copies went out.
+  // Returning on signedPdfKey alone would let a retry that follows a mail
+  // failure report success while nobody ever receives their document.
+  if (req.signedPdfKey && req.completionEmailedAt) return;
   if (req.status !== 'completed') throw new Error(`completion: request ${requestId} is not signed`);
   if (!req.signatureImageKey || !req.completedAt) {
     throw new Error(`completion: request ${requestId} has no signature`);
+  }
+
+  // Already sealed but not yet delivered (a previous run died at the mail
+  // step): reuse the EXISTING artifacts. Re-stamping would produce different
+  // bytes than the ones the seal on file covers.
+  if (req.signedPdfKey && req.certificateKey) {
+    const [signedPdf, certificatePdf] = await Promise.all([
+      getObject(req.signedPdfKey),
+      getObject(req.certificateKey),
+    ]);
+    await deliver(tenant, req, signedPdf, certificatePdf);
+    return;
   }
 
   const doc = await runInTenant(tenant, (tx) =>
@@ -96,16 +111,44 @@ export async function completeSignature(tenant: string, requestId: string): Prom
     putObject(certificateKey, certificatePdf, 'application/pdf'),
   ]);
 
-  await runInTenant(tenant, (tx) =>
+  // The conditional UPDATE is the claim, and its COUNT is the verdict: exactly
+  // one run may record the artifacts. A racing duplicate stamps different bytes
+  // (a fresh PDF save differs), so if it also emailed, the two parties could
+  // hold documents whose hashes don't match the one seal on file. The loser
+  // therefore stops here and emails nothing — the winner's copy is the record.
+  const { count } = await runInTenant(tenant, (tx) =>
     tx.signatureRequest.updateMany({
-      // Only fill in artifacts once — a racing duplicate job writes nothing.
       where: { id: req.id, signedPdfKey: null },
       data: { signedPdfKey, certificateKey, documentHash, sealSignature, sealKid },
     }),
   );
+  if (count !== 1) return;
 
-  // 6. Email both parties their copy. Sending is last: a mail failure must
-  // never roll back a completed, sealed signature (the retry re-sends only).
+  // 6. Deliver. Sending is last: a mail failure must never roll back a
+  // completed, sealed signature — the retry re-sends only.
+  await deliver(tenant, req, signedPdf, certificatePdf);
+}
+
+interface DeliverableRequest {
+  id: string;
+  documentName: string;
+  recipientName: string | null;
+  recipientEmail: string;
+  senderEmail: string | null;
+}
+
+/**
+ * Email both parties their copy, then record that we did. The flag is written
+ * only AFTER both sends succeed, so a crash mid-delivery retries rather than
+ * silently reporting success — and `completionEmailedAt: null` in the WHERE
+ * keeps a duplicate run from double-marking.
+ */
+async function deliver(
+  tenant: string,
+  req: DeliverableRequest,
+  signedPdf: Buffer,
+  certificatePdf: Buffer,
+): Promise<void> {
   const attachments = [
     { filename: safeName(req.documentName), content: signedPdf },
     { filename: 'certificate-of-completion.pdf', content: certificatePdf },
@@ -130,6 +173,12 @@ export async function completeSignature(tenant: string, requestId: string): Prom
       attachments,
     });
   }
+  await runInTenant(tenant, (tx) =>
+    tx.signatureRequest.updateMany({
+      where: { id: req.id, completionEmailedAt: null },
+      data: { completionEmailedAt: new Date() },
+    }),
+  );
 }
 
 function methodLabel(method: string | null): string {

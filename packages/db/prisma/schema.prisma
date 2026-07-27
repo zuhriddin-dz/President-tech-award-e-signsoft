@@ -130,6 +130,10 @@ model SignatureRequest {
 
   // Completion artifacts (Phase 10): produced by the worker after signing.
   // The seal covers documentHash bound to this request id + completedAt.
+  // Set once both parties have been emailed their copy — so a retry that runs
+  // after sealing but before/through a mail failure still delivers, instead of
+  // seeing the artifacts and reporting success without sending anything.
+  completionEmailedAt DateTime? @map("completion_emailed_at")
   signedPdfKey   String? @map("signed_pdf_key")
   certificateKey String? @map("certificate_key")
   documentHash   String? @map("document_hash")

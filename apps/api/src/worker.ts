@@ -4,6 +4,8 @@ import { pino } from 'pino';
 import { env } from './config/env.js';
 import { QUEUE_NAME, redisConnection } from './queue/queue.js';
 import { processors } from './queue/processors.js';
+import { completeSignature } from './modules/signing/completion.js';
+import { findStrandedCompletions } from './tenant/stranded-completions.js';
 
 /**
  * The worker process — same codebase as the API, second entrypoint, scaled
@@ -30,6 +32,34 @@ const worker = new Worker(
 worker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, name: job?.name, err: err.message }, 'job failed');
 });
+
+/**
+ * The reconciler. A signature is committed before its completion job is
+ * enqueued, so an enqueue failure (or a lost job) would strand real evidence:
+ * completed, but never sealed or delivered. This sweep is the safety net that
+ * makes "the signature is never lost" true rather than aspirational.
+ */
+const RECONCILE_INTERVAL_MS = 60_000;
+async function reconcile(): Promise<void> {
+  try {
+    const stranded = await findStrandedCompletions();
+    for (const s of stranded) {
+      logger.warn({ requestId: s.requestId }, 'reconciling stranded completion');
+      try {
+        await completeSignature(s.tenant, s.requestId);
+      } catch (err) {
+        logger.error(
+          { requestId: s.requestId, err: (err as Error).message },
+          'reconcile attempt failed (will retry next sweep)',
+        );
+      }
+    }
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, 'reconcile sweep failed');
+  }
+}
+const reconcileTimer = setInterval(() => void reconcile(), RECONCILE_INTERVAL_MS);
+reconcileTimer.unref();
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

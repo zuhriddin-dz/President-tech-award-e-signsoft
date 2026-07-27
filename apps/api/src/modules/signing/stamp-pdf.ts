@@ -49,8 +49,24 @@ export async function stampPdf(input: StampInput): Promise<Buffer> {
   for (const field of input.fields) {
     const page = pages[field.page - 1];
     if (!page) continue; // a field pointing past the document is skipped, never fatal
-    const { width: pw, height: ph } = page.getSize();
+
+    // The viewer (pdf.js) lays out the page as DISPLAYED — rotation applied,
+    // origin at the MediaBox corner. Two corrections are needed or fields land
+    // in the wrong place on exactly the documents people scan and rotate:
+    //  1. a 90/270° page displays with width/height swapped;
+    //  2. a MediaBox that doesn't start at (0,0) shifts everything.
+    const rotation = ((page.getRotation().angle % 360) + 360) % 360;
+    const { width: mediaW, height: mediaH } = page.getSize();
+    const quarterTurn = rotation === 90 || rotation === 270;
+    const pw = quarterTurn ? mediaH : mediaW;
+    const ph = quarterTurn ? mediaW : mediaH;
     const box = toPdfBox(field, pw, ph);
+    // Rotated pages are out of scope for precise placement; skip rather than
+    // stamp a signature somewhere wrong on a legal document.
+    if (quarterTurn || rotation !== 0) continue;
+    const mediaBox = page.getMediaBox();
+    box.x += mediaBox.x;
+    box.y += mediaBox.y;
 
     if (IMAGE_FIELDS.has(field.type)) {
       // Fit the signature inside the box preserving aspect ratio, centred —
