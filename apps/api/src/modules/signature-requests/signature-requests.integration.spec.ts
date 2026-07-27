@@ -15,6 +15,7 @@ import { TenantContext } from '../../tenant/tenant-context.js';
 import { TenantDb } from '../../tenant/tenant-db.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { TemplatesService } from '../templates/templates.service.js';
+import { SealService, parseSealRing, sha256Hex } from '@docflow/crypto';
 import { SignatureRequestsService } from './signature-requests.service.js';
 
 const live = env.APP_DATABASE_URL.includes('neon.tech');
@@ -37,7 +38,8 @@ const fakeQueue = {
     enqueued.push({ name, payload, key });
   },
 } as unknown as import('../../queue/queue.service.js').QueueService;
-const requests = new SignatureRequestsService(db, context, fakeQueue);
+const seal = new SealService(parseSealRing(env.ESIGN_SEAL_KEYS));
+const requests = new SignatureRequestsService(db, context, fakeQueue, storage, seal);
 
 const tenantA = randomUUID();
 const tenantB = randomUUID();
@@ -140,7 +142,7 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
         throw new Error('connect ECONNREFUSED 127.0.0.1:6379');
       },
     } as unknown as import('../../queue/queue.service.js').QueueService;
-    const failing = new SignatureRequestsService(db, context, failingQueue);
+    const failing = new SignatureRequestsService(db, context, failingQueue, storage, seal);
 
     await cls.run(async () => {
       enter(tenantA);
@@ -166,6 +168,89 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
         if (d) await storage.delete(d.storageKey);
         await db.tx((tx) => tx.document.deleteMany({ where: { id: tpl.documentId } }));
       }
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { id: tenantA } }));
+    });
+  }, 90_000);
+
+  it('verify() confirms an untouched document and CATCHES a tampered one', async () => {
+    await cls.run(async () => {
+      enter(tenantA);
+      await seed(tenantA);
+
+      // Seed a completed+sealed request the way the pipeline leaves it.
+      const pdf = await PDFDocument.create();
+      pdf.addPage([595, 842]);
+      const signedBytes = Buffer.from(await pdf.save());
+      const signedKey = storage.newKey('signed');
+      await storage.put(signedKey, signedBytes, 'application/pdf');
+
+      const doc = await documents.create('V.pdf', signedBytes, 'application/pdf');
+      const completedAt = new Date();
+      const documentHash = sha256Hex(signedBytes);
+      const { signature, kid } = seal.seal({
+        requestId: '00000000-0000-0000-0000-000000000000',
+        signedAt: completedAt,
+        documentHash,
+      });
+      const row = await db.tx((tx) =>
+        tx.signatureRequest.create({
+          data: {
+            documentId: doc.id,
+            documentName: 'V.pdf',
+            fields: [],
+            recipientEmail: 'v@example.com',
+            signingTokenHash: createHash('sha256').update(randomUUID()).digest('hex'),
+            createdByUserId: randomUUID(),
+            expiresAt: new Date(Date.now() + 864e5),
+            status: 'completed',
+            completedAt,
+            signedPdfKey: signedKey,
+            documentHash,
+            sealSignature: signature,
+            sealKid: kid,
+          },
+        }),
+      );
+
+      // The seal above was made for a DIFFERENT request id, so it must NOT
+      // verify — proof the seal is bound to its request, not just the bytes.
+      const wrongRequest = await requests.verify(row.id);
+      expect(wrongRequest.hashMatches).toBe(true);
+      expect(wrongRequest.sealValid).toBe(false);
+      expect(wrongRequest.valid).toBe(false);
+
+      // Re-seal correctly for THIS request → valid.
+      const correct = seal.seal({ requestId: row.id, signedAt: completedAt, documentHash });
+      await db.tx((tx) =>
+        tx.signatureRequest.updateMany({
+          where: { id: row.id },
+          data: { sealSignature: correct.signature, sealKid: correct.kid },
+        }),
+      );
+      const good = await requests.verify(row.id);
+      expect(good.valid).toBe(true);
+      expect(good.hashMatches).toBe(true);
+      expect(good.sealValid).toBe(true);
+
+      // TAMPER: overwrite the stored PDF with different bytes.
+      const tamperedPdf = await PDFDocument.create();
+      tamperedPdf.addPage([595, 842]);
+      tamperedPdf.addPage([595, 842]);
+      await storage.put(signedKey, Buffer.from(await tamperedPdf.save()), 'application/pdf');
+
+      const bad = await requests.verify(row.id);
+      expect(bad.valid).toBe(false);
+      expect(bad.hashMatches).toBe(false); // the file changed
+      expect(bad.computedHash).not.toBe(bad.recordedHash);
+
+      // Cleanup.
+      await storage.delete(signedKey);
+      await db.tx((tx) => tx.signatureRequest.deleteMany({ where: { id: row.id } }));
+      const d = await db.tx((tx) =>
+        tx.document.findUnique({ where: { id: doc.id }, select: { storageKey: true } }),
+      );
+      if (d) await storage.delete(d.storageKey);
+      await db.tx((tx) => tx.document.deleteMany({ where: { id: doc.id } }));
       await db.tx((tx) => tx.tenant.deleteMany({ where: { id: tenantA } }));
     });
   }, 90_000);

@@ -5,7 +5,9 @@ import {
   SignatureRequestSchema,
   TemplateListSchema,
   TemplateSchema,
+  VerifyResultSchema,
   type SendRequest,
+  type VerifyResult,
   type SignatureRequest,
   type SignatureRequestList,
   type Template,
@@ -66,7 +68,20 @@ export async function listSignatureRequests(): Promise<SignatureRequestList> {
   return SignatureRequestListSchema.parse(await req(API_PATHS.signatureRequests));
 }
 
+/** Re-hash the stored signed PDF and check the seal. */
+export async function verifyRequest(id: string): Promise<VerifyResult> {
+  return VerifyResultSchema.parse(await req(`${API_PATHS.signatureRequests}/${id}/verify`));
+}
+
 /** The document PDF bytes, streamed through the BFF (authenticated, same-origin). */
 export function documentPdfUrl(documentId: string): string {
   return `/api${API_PATHS.documents}/${documentId}/download`;
+}
+
+/** Sealed artifacts for a completed request, streamed through the BFF. */
+export function signedPdfUrl(requestId: string): string {
+  return `/api${API_PATHS.signatureRequests}/${requestId}/signed`;
+}
+export function certificateUrl(requestId: string): string {
+  return `/api${API_PATHS.signatureRequests}/${requestId}/certificate`;
 }

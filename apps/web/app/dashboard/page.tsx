@@ -99,8 +99,12 @@ function RequestTable({
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="px-5 py-3 text-ink">{r.documentName}</td>
+                <tr key={r.id} className="hover:bg-surface-muted">
+                  <td className="px-5 py-3">
+                    <Link href={`/requests/${r.id}`} className="text-ink hover:text-brand">
+                      {r.documentName}
+                    </Link>
+                  </td>
                   <td className="px-5 py-3 text-ink-muted">{r.recipientEmail}</td>
                   <td className="px-5 py-3">
                     <StatusPill status={r.status} />

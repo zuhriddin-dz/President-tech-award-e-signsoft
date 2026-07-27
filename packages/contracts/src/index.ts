@@ -64,6 +64,45 @@ export const SignatureRequestListSchema = z.object({
 });
 export type SignatureRequestList = z.infer<typeof SignatureRequestListSchema>;
 
+/**
+ * The full audit record behind one request — everything the Certificate of
+ * Completion attests, in structured form, for the sender's detail page.
+ */
+export const SignatureRequestDetailSchema = SignatureRequestSchema.extend({
+  senderEmail: z.string().nullable(),
+  consentAt: z.iso.datetime().nullable(),
+  signatureMethod: z.string().nullable(),
+  viewedIp: z.string().nullable(),
+  viewedUserAgent: z.string().nullable(),
+  signerIp: z.string().nullable(),
+  signerUserAgent: z.string().nullable(),
+  /** sha256 of the signed PDF; null until the completion pipeline has run. */
+  documentHash: z.string().nullable(),
+  sealKid: z.string().nullable(),
+  /** Whether the sealed artifacts exist yet (the pipeline is async). */
+  hasSignedPdf: z.boolean(),
+  hasCertificate: z.boolean(),
+});
+export type SignatureRequestDetail = z.infer<typeof SignatureRequestDetailSchema>;
+
+/**
+ * The tamper check: the server re-hashes the STORED signed PDF and verifies the
+ * Ed25519 seal over {requestId, signedAt, hash}. `valid` false means the file
+ * changed since signing, or the seal doesn't belong to this request.
+ */
+export const VerifyResultSchema = z.object({
+  valid: z.boolean(),
+  /** Hash recomputed from the stored bytes right now. */
+  computedHash: z.string().nullable(),
+  /** Hash recorded at signing time. */
+  recordedHash: z.string().nullable(),
+  hashMatches: z.boolean(),
+  sealValid: z.boolean(),
+  sealKid: z.string().nullable(),
+  checkedAt: z.iso.datetime(),
+});
+export type VerifyResult = z.infer<typeof VerifyResultSchema>;
+
 // ── Templates & field layout ────────────────────────────────────────────────
 
 /**
