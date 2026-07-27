@@ -204,6 +204,75 @@ describe.skipIf(!live)('send flow (live Neon, faked queue)', () => {
     });
   }, 90_000);
 
+  it('void kills every outstanding link; resend issues a new one and retires the old', async () => {
+    await cls.run(async () => {
+      enter(tenantA);
+      await seed(tenantA);
+      const templateId = await templateWithField();
+
+      // --- resend: the old token must stop working ---
+      const req = await requests.send(
+        {
+          templateId,
+          routingMode: 'parallel',
+          recipients: [{ email: 'a@example.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' }],
+        },
+        'sender@acme.test',
+      );
+      const before = await db.tx((tx) =>
+        tx.recipient.findFirst({ where: { requestId: req.id } }),
+      );
+      await requests.resend(req.id, before!.id);
+      const after = await db.tx((tx) => tx.recipient.findUnique({ where: { id: before!.id } }));
+      expect(after?.signingTokenHash).toBeTruthy();
+      expect(after?.signingTokenHash).not.toBe(before?.signingTokenHash); // old link dead
+
+      // --- void: every outstanding token is destroyed ---
+      await requests.void(req.id, 'no longer needed');
+      const voided = await db.tx((tx) =>
+        tx.signatureRequest.findUnique({ where: { id: req.id }, include: { recipients: true } }),
+      );
+      expect(voided?.status).toBe('voided');
+      expect(voided?.voidedAt).not.toBeNull();
+      // The hash is CLEARED, so the link resolves to nothing at all.
+      expect(voided?.recipients.every((r) => r.signingTokenHash === null)).toBe(true);
+
+      // A signed envelope must NOT be cancellable — the evidence has to stand.
+      const signedReq = await requests.send(
+        {
+          templateId,
+          routingMode: 'parallel',
+          recipients: [{ email: 'b@example.com', role: 'signer', routingOrder: 1, recipientKey: 'signer' }],
+        },
+        'sender@acme.test',
+      );
+      await db.tx((tx) =>
+        tx.signatureRequest.updateMany({
+          where: { id: signedReq.id },
+          data: { status: 'completed', completedAt: new Date() },
+        }),
+      );
+      await expect(requests.void(signedReq.id, null)).rejects.toMatchObject({ status: 409 });
+
+      // Cleanup.
+      await db.tx((tx) =>
+        tx.signatureRequest.deleteMany({ where: { id: { in: [req.id, signedReq.id] } } }),
+      );
+      const tpl = await db.tx((tx) =>
+        tx.template.findUnique({ where: { id: templateId }, select: { documentId: true } }),
+      );
+      await db.tx((tx) => tx.template.deleteMany({ where: { id: templateId } }));
+      if (tpl) {
+        const d = await db.tx((tx) =>
+          tx.document.findUnique({ where: { id: tpl.documentId }, select: { storageKey: true } }),
+        );
+        if (d) await storage.delete(d.storageKey);
+        await db.tx((tx) => tx.document.deleteMany({ where: { id: tpl.documentId } }));
+      }
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { id: tenantA } }));
+    });
+  }, 90_000);
+
   it('a failed invite enqueue rolls the request back (no phantom "waiting" row)', async () => {
     // The exact failure the owner hit: Redis down. The send must fail fast AND
     // leave nothing behind — a row whose email will never arrive would make the

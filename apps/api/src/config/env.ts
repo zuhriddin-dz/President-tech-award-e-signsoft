@@ -36,6 +36,10 @@ const envSchema = z.object({
   SIGN_APP_URL: z.url(),
   // Signing-link lifetime in days.
   ESIGN_LINK_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  // Nudge a signer who has been sitting on a live link this long, at most
+  // REMINDER_MAX times — polite, capped, never spam.
+  REMINDER_AFTER_DAYS: z.coerce.number().int().min(1).max(90).default(3),
+  REMINDER_MAX: z.coerce.number().int().min(0).max(10).default(3),
   // The narrow credential the public signing app relays with — accepted ONLY
   // on /sign/* routes, so a compromise of that box reaches the signing surface
   // and nothing else. >= 32 bytes.

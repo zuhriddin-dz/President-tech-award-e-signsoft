@@ -86,6 +86,8 @@ enum SignatureStatus {
   viewed
   completed
   voided
+  /// Lapsed without every signer finishing — nobody can sign it now.
+  expired
 
   @@map("signature_status")
 }
@@ -150,6 +152,10 @@ model Recipient {
   viewedAt    DateTime? @map("viewed_at")
   consentAt   DateTime? @map("consent_at")
   completedAt DateTime? @map("completed_at")
+  /// Nudges sent to this person, and when the last one went — so reminders
+  /// stay polite (capped) and never spam.
+  lastRemindedAt DateTime? @map("last_reminded_at")
+  reminderCount  Int       @default(0) @map("reminder_count")
 
   signatureMethod   String? @map("signature_method")
   signatureImageKey String? @map("signature_image_key")
@@ -212,6 +218,10 @@ model SignatureRequest {
   // Set once both parties have been emailed their copy — so a retry that runs
   // after sealing but before/through a mail failure still delivers, instead of
   // seeing the artifacts and reporting success without sending anything.
+  /// Set when the sender cancels the envelope; every token dies with it.
+  voidedAt            DateTime? @map("voided_at")
+  /// Set when the expiry sweep retires it, so the sender is told once.
+  expiredNotifiedAt   DateTime? @map("expired_notified_at")
   completionEmailedAt DateTime? @map("completion_emailed_at")
   signedPdfKey   String? @map("signed_pdf_key")
   certificateKey String? @map("certificate_key")

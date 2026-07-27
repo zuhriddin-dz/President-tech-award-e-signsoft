@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -19,7 +20,9 @@ import type {
 } from '@docflow/contracts';
 import { StorageService } from '../../storage/storage.service.js';
 import { env } from '../../config/env.js';
-import { INVITE_JOB, type SigningInviteJob } from '../../queue/jobs.js';
+import { EMAIL_JOB, INVITE_JOB, type SendEmailJob, type SigningInviteJob } from '../../queue/jobs.js';
+import { buildSigningInviteEmail } from '../../email/signing-invite-email.js';
+import { buildVoidedEmail } from '../../email/lifecycle-emails.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
 import { TenantDb } from '../../tenant/tenant-db.js';
@@ -194,6 +197,135 @@ export class SignatureRequestsService {
       tx.signatureRequest.findUnique({ where: { id: row.id }, include: { recipients: true } }),
     );
     return toWire(withRecipients ?? { ...row, recipients: [] });
+  }
+
+  /**
+   * Cancel an envelope. Every outstanding signing token is destroyed (not just
+   * marked — the hash is cleared, so the link resolves to nothing), and anyone
+   * who hadn't finished is told. A completed envelope cannot be voided: its
+   * signatures are real and the evidence must stand.
+   */
+  async void(id: string, reason: string | null): Promise<{ ok: true }> {
+    const outstanding = await this.db.tx(async (tx) => {
+      const row = await tx.signatureRequest.findUnique({
+        where: { id },
+        include: { recipients: true },
+      });
+      if (!row) throw new NotFoundException();
+      if (row.status === 'completed') {
+        throw new ConflictException('This document is already signed and cannot be cancelled.');
+      }
+      if (row.status === 'voided') return { people: [], documentName: row.documentName };
+
+      const now = new Date();
+      await tx.signatureRequest.updateMany({
+        where: { id, status: { in: ['sent', 'viewed', 'expired'] } },
+        data: { status: 'voided', voidedAt: now },
+      });
+      // Clearing the hash is what actually kills the links: resolution is a
+      // lookup BY hash, so a token with no row resolves to nothing.
+      await tx.recipient.updateMany({
+        where: { requestId: id, status: { in: ['pending', 'sent', 'viewed'] } },
+        data: { signingTokenHash: null },
+      });
+      return {
+        people: row.recipients.filter((r) => r.status !== 'completed'),
+        documentName: row.documentName,
+      };
+    });
+
+    for (const r of outstanding.people) {
+      await this.notify(
+        buildVoidedEmail({
+          to: r.email,
+          recipientName: r.name,
+          documentName: outstanding.documentName,
+          reason,
+        }),
+        `void-${r.id}`,
+      );
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Re-issue one recipient's link. A NEW token is minted and the old one dies
+   * immediately — so a link forwarded to the wrong person, or lost in a spam
+   * folder, can be replaced without cancelling the whole envelope.
+   */
+  async resend(id: string, recipientId: string): Promise<{ ok: true }> {
+    const { recipient, documentName, token } = await this.db.tx(async (tx) => {
+      const row = await tx.signatureRequest.findUnique({ where: { id } });
+      if (!row) throw new NotFoundException();
+      if (row.status !== 'sent' && row.status !== 'viewed') {
+        throw new ConflictException('This document is no longer awaiting signatures.');
+      }
+      const rc = await tx.recipient.findUnique({ where: { id: recipientId } });
+      if (!rc || rc.requestId !== id) throw new NotFoundException();
+      if (rc.role !== 'signer') throw new ConflictException('That recipient does not sign.');
+      if (rc.status === 'completed') throw new ConflictException('They have already signed.');
+      if (rc.status === 'pending') {
+        throw new ConflictException("It is not this person's turn yet.");
+      }
+
+      const minted = mintSigningToken();
+      await tx.recipient.updateMany({
+        where: { id: recipientId },
+        data: { signingTokenHash: minted.sha256, sentAt: new Date(), status: 'sent' },
+      });
+      return { recipient: rc, documentName: row.documentName, token: minted.token };
+    });
+
+    await this.notify(
+      buildSigningInviteEmail({
+        to: recipient.email,
+        recipientName: recipient.name,
+        documentName,
+        senderName: null,
+        signUrl: `${env.SIGN_APP_URL}/sign/${token}`,
+      }),
+      // Time-suffixed: a resend is a NEW delivery, not a duplicate of the
+      // original invite, so it must not be deduplicated away.
+      `resend-${recipientId}-${Date.now()}`,
+    );
+    return { ok: true };
+  }
+
+  /** Nudge one recipient using their EXISTING link (no new token). */
+  async remind(id: string, recipientId: string): Promise<{ ok: true }> {
+    const row = await this.db.tx((tx) => tx.signatureRequest.findUnique({ where: { id } }));
+    if (!row) throw new NotFoundException();
+    if (row.status !== 'sent' && row.status !== 'viewed') {
+      throw new ConflictException('This document is no longer awaiting signatures.');
+    }
+    const rc = await this.db.tx((tx) => tx.recipient.findUnique({ where: { id: recipientId } }));
+    if (!rc || rc.requestId !== id) throw new NotFoundException();
+    if (rc.status === 'completed') throw new ConflictException('They have already signed.');
+    if (!rc.signingTokenHash) {
+      // No live token to point at — the honest action is Resend, not Remind.
+      throw new ConflictException('That recipient has no active link; use Resend instead.');
+    }
+
+    // We only hold the HASH, so a reminder cannot contain the original link.
+    // Re-issuing is the only way to send a working URL — which is exactly what
+    // resend() is for. A manual reminder therefore rotates the token too.
+    return this.resend(id, recipientId);
+  }
+
+  /**
+   * Queue one already-composed email. Sending stays off the request path, and
+   * a failure here never fails the action that triggered it — cancelling a
+   * document must succeed even if the courtesy email cannot go out.
+   */
+  private async notify(message: SendEmailJob, key: string): Promise<void> {
+    try {
+      await this.queue.enqueue(EMAIL_JOB, { ...message }, key, {
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+    } catch (cause) {
+      this.logger.error(`lifecycle email "${key}" could not be queued: ${(cause as Error).message}`);
+    }
   }
 
   /** The full audit record for one request (RLS-scoped; foreign id → 404). */

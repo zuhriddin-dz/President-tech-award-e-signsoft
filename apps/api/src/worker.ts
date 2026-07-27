@@ -6,6 +6,7 @@ import { QUEUE_NAME, redisConnection } from './queue/queue.js';
 import { processors } from './queue/processors.js';
 import { completeSignature } from './modules/signing/completion.js';
 import { findStrandedCompletions } from './tenant/stranded-completions.js';
+import { sweepExpiredEnvelopes, sweepReminders } from './modules/signature-requests/lifecycle.js';
 
 /**
  * The worker process — same codebase as the API, second entrypoint, scaled
@@ -56,6 +57,21 @@ async function reconcile(): Promise<void> {
     }
   } catch (err) {
     logger.error({ err: (err as Error).message }, 'reconcile sweep failed');
+  }
+
+  // The envelope lifecycle: nudge the stalled, retire the lapsed. Both are
+  // best-effort — a failure here must never stop the reconciler above.
+  try {
+    const expired = await sweepExpiredEnvelopes();
+    if (expired > 0) logger.info({ expired }, 'retired expired envelopes');
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, 'expiry sweep failed');
+  }
+  try {
+    const reminded = await sweepReminders();
+    if (reminded > 0) logger.info({ reminded }, 'sent reminders');
+  } catch (err) {
+    logger.error({ err: (err as Error).message }, 'reminder sweep failed');
   }
 }
 const reconcileTimer = setInterval(() => void reconcile(), RECONCILE_INTERVAL_MS);

@@ -85,3 +85,26 @@ export function signedPdfUrl(requestId: string): string {
 export function certificateUrl(requestId: string): string {
   return `/api${API_PATHS.signatureRequests}/${requestId}/certificate`;
 }
+
+/** Cancel an envelope — outstanding links die, recipients are told. */
+export async function voidRequest(id: string, reason?: string): Promise<void> {
+  await req(`${API_PATHS.signatureRequests}/${id}/void`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** Re-issue one recipient's signing link (the old one stops working). */
+export async function resendRecipient(id: string, recipientId: string): Promise<void> {
+  await req(`${API_PATHS.signatureRequests}/${id}/recipients/${recipientId}/resend`, {
+    method: 'POST',
+  });
+}
+
+/** Nudge one recipient who hasn't signed yet. */
+export async function remindRecipient(id: string, recipientId: string): Promise<void> {
+  await req(`${API_PATHS.signatureRequests}/${id}/recipients/${recipientId}/remind`, {
+    method: 'POST',
+  });
+}

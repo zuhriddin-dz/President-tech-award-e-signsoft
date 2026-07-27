@@ -35,7 +35,13 @@ export const API_PATHS = {
 
 // ── Signature requests (send flow) ──────────────────────────────────────────
 
-export const SignatureStatusSchema = z.enum(['sent', 'viewed', 'completed', 'voided']);
+export const SignatureStatusSchema = z.enum([
+  'sent',
+  'viewed',
+  'completed',
+  'voided',
+  'expired',
+]);
 export type SignatureStatus = z.infer<typeof SignatureStatusSchema>;
 
 export const RecipientRoleSchema = z.enum(['signer', 'cc']);
@@ -293,3 +299,9 @@ export const SubmitSignatureSchema = z.object({
 export type SubmitSignature = z.infer<typeof SubmitSignatureSchema>;
 
 export const PACKAGE_NAME = '@docflow/contracts' as const;
+
+/** Cancel an envelope. The reason (if given) is shown to the recipients. */
+export const VoidRequestSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+export type VoidRequest = z.infer<typeof VoidRequestSchema>;

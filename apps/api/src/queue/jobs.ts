@@ -27,3 +27,17 @@ export interface CompleteSignatureJob {
    */
   tenant: string;
 }
+
+/**
+ * A ready-made email to deliver. Used by the lifecycle actions (reminder,
+ * void, expiry) where the body is composed at the call site — so sending stays
+ * off the request path without inventing a job type per message.
+ */
+export const EMAIL_JOB = 'send-email';
+
+export interface SendEmailJob {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}

@@ -5,8 +5,10 @@ import type { EmailSender } from '../email/email.types.js';
 import { completeSignature } from '../modules/signing/completion.js';
 import {
   COMPLETE_JOB,
+  EMAIL_JOB,
   INVITE_JOB,
   type CompleteSignatureJob,
+  type SendEmailJob,
   type SigningInviteJob,
 } from './jobs.js';
 
@@ -33,6 +35,10 @@ export const processors: Record<string, Processor> = {
     // by jobId, and a retry re-sends the SAME invite (same link) — acceptable,
     // since the token is single-use, so at most one signing can result.
     await email.send(buildSigningInviteEmail(job));
+  },
+
+  [EMAIL_JOB]: async (data) => {
+    await email.send(data as unknown as SendEmailJob);
   },
 
   // stamp → SHA-256 → Ed25519 seal → Certificate of Completion → store → email

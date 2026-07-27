@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -8,7 +9,12 @@ import {
   Post,
   StreamableFile,
 } from '@nestjs/common';
-import { SendRequestSchema, type SendRequest, type VerifyResult } from '@docflow/contracts';
+import {
+  SendRequestSchema,
+  VoidRequestSchema,
+  type SendRequest,
+  type VerifyResult,
+} from '@docflow/contracts';
 import { Policy } from '../../common/policy.js';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
@@ -75,6 +81,38 @@ export class SignatureRequestsController {
       disposition: `attachment; filename="${filename}"`,
       length: size,
     });
+  }
+
+  /** Cancel an envelope — every outstanding link dies, everyone is told. */
+  @Post(':id/void')
+  @Policy('member')
+  async void(
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+    @Body() body: unknown,
+  ): Promise<{ ok: true }> {
+    const parsed = VoidRequestSchema.safeParse(body ?? {});
+    if (!parsed.success) throw new BadRequestException('invalid request');
+    return this.requests.void(id, parsed.data.reason ?? null);
+  }
+
+  /** Re-issue one recipient's link (the old one dies immediately). */
+  @Post(':id/recipients/:recipientId/resend')
+  @Policy('member')
+  async resend(
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+    @Param('recipientId', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) recipientId: string,
+  ): Promise<{ ok: true }> {
+    return this.requests.resend(id, recipientId);
+  }
+
+  /** Nudge one recipient who hasn't signed yet. */
+  @Post(':id/recipients/:recipientId/remind')
+  @Policy('member')
+  async remind(
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+    @Param('recipientId', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) recipientId: string,
+  ): Promise<{ ok: true }> {
+    return this.requests.remind(id, recipientId);
   }
 
   /** Re-hash the stored signed PDF and check the seal. */

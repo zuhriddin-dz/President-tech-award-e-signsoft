@@ -4,6 +4,7 @@ import { API_PATHS, SignatureRequestDetailSchema } from '@docflow/contracts';
 import type { SignatureRequestDetail } from '@docflow/contracts';
 import { apiGetOrOnboarding } from '@/lib/api';
 import { VerifyPanel } from './verify-panel';
+import { EnvelopeActions } from './envelope-actions';
 
 /**
  * Request detail — the sender's evidence view, laid out like the Certificate of
@@ -102,6 +103,8 @@ export default async function RequestDetailPage({
         {r.signerUserAgent && <Row label="Browser" value={r.signerUserAgent} mono />}
       </Section>
 
+      <EnvelopeActions detail={r} />
+
       {r.status === 'completed' && <VerifyPanel requestId={r.id} detail={r} />}
     </div>
   );
@@ -168,6 +171,7 @@ function StatusPill({ status }: { status: SignatureRequestDetail['status'] }) {
     viewed: 'bg-warning/10 text-warning',
     completed: 'bg-success/10 text-success',
     voided: 'bg-ink/10 text-ink-muted',
+    expired: 'bg-danger/10 text-danger',
   };
   return (
     <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[status]}`}>

@@ -144,6 +144,7 @@ function StatusPill({ status }: { status: SignatureRequest['status'] }) {
     viewed: 'bg-warning/10 text-warning',
     completed: 'bg-success/10 text-success',
     voided: 'bg-ink/10 text-ink-muted',
+    expired: 'bg-danger/10 text-danger',
   };
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}>
