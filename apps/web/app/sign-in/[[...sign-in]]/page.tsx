@@ -7,7 +7,7 @@ export default function SignInPage() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 bg-surface-muted px-6 py-16">
       <Link href="/" className="flex items-center gap-2">
         <Mark />
-        <span className="text-2xl font-bold tracking-tight text-ink">eSignSoft</span>
+        <span className="text-2xl font-bold tracking-tight text-ink">E-SIGNSOFT</span>
       </Link>
       <SignIn />
     </div>

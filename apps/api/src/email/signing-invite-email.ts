@@ -32,7 +32,7 @@ export function buildSigningInviteEmail(data: SigningInviteData): EmailMessage {
   // counterparty's wording, not ours.
   const subject =
     data.subject?.trim() ||
-    `${data.senderName ?? 'eSignSoft'} sent you "${data.documentName}" to sign`;
+    `${data.senderName ?? 'E-SIGNSOFT'} sent you "${data.documentName}" to sign`;
 
   // The note is escaped and rendered as a quoted block: it is the sender's
   // text, and it must never be able to inject markup into our email.

@@ -14,16 +14,16 @@ export interface LegalSection {
 
 export const TERMS: LegalSection[] = [
   {
-    heading: 'What eSignSoft does',
+    heading: 'What E-SIGNSOFT does',
     body: [
-      'eSignSoft lets you send a document for electronic signature, and gives every completed document a sealed copy plus a Certificate of Completion recording who signed, when, and from where.',
+      'E-SIGNSOFT lets you send a document for electronic signature, and gives every completed document a sealed copy plus a Certificate of Completion recording who signed, when, and from where.',
       'You are responsible for the content of what you send and for having the right to send it to the people you address it to.',
     ],
   },
   {
     heading: 'Electronic signatures',
     body: [
-      'Signing electronically through eSignSoft is intended to create a binding signature under the US ESIGN Act and UETA, and equivalent regimes elsewhere. Before anyone can sign they are shown the Electronic Record and Signature Disclosure and must actively agree to it.',
+      'Signing electronically through E-SIGNSOFT is intended to create a binding signature under the US ESIGN Act and UETA, and equivalent regimes elsewhere. Before anyone can sign they are shown the Electronic Record and Signature Disclosure and must actively agree to it.',
       'Some documents cannot be signed electronically by law — wills, certain family-law and court filings, and some notices. It is your responsibility to know whether that applies to a document you send.',
     ],
   },
@@ -53,7 +53,7 @@ export const PRIVACY: LegalSection[] = [
   {
     heading: 'What we collect',
     body: [
-      'Account details: your name, email address, and workspace. Sign-in itself is handled by our identity provider — eSignSoft never stores your password.',
+      'Account details: your name, email address, and workspace. Sign-in itself is handled by our identity provider — E-SIGNSOFT never stores your password.',
       'Documents you upload and send, and the field values entered on them.',
       'Signing evidence: when a link was opened, when consent was given, when the document was signed, and the IP address and browser used at each step. This is the proof that makes a signature stand up, so it is recorded deliberately and shown on the Certificate of Completion.',
     ],

@@ -1,6 +1,6 @@
 import { LegalPage, TERMS } from '@/components/legal/legal-page';
 
-export const metadata = { title: 'Terms of Use · eSignSoft' };
+export const metadata = { title: 'Terms of Use · E-SIGNSOFT' };
 
 /**
  * The signer's copy of the terms. Served from THIS app so a person following

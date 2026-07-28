@@ -51,7 +51,7 @@ export function emailShell(title: string, bodyHtml: string): string {
   <div style="font-family:${EMAIL_THEME.fontStack};max-width:520px;margin:0 auto;color:${EMAIL_THEME.ink}">
     <div style="padding:0 0 20px">
       ${emailMark()}
-      <span style="display:inline-block;margin-left:10px;font-size:19px;font-weight:700;letter-spacing:-.01em;color:${EMAIL_THEME.ink};vertical-align:middle">eSignSoft</span>
+      <span style="display:inline-block;margin-left:10px;font-size:16px;font-weight:700;letter-spacing:.055em;color:${EMAIL_THEME.ink};vertical-align:middle">E-SIGNSOFT</span>
     </div>
     <h2 style="font-size:18px;margin:0 0 12px">${title}</h2>
     ${bodyHtml}

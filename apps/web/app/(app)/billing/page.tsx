@@ -138,7 +138,7 @@ export default async function BillingPage() {
         <CardHeader title="Why you cannot pay yet" />
         <div className="px-6 pb-6 text-sm text-ink-muted">
           <p>
-            eSignSoft has no payment processor connected, so there is no checkout to send you to and
+            E-SIGNSOFT has no payment processor connected, so there is no checkout to send you to and
             no card on file to charge. When billing opens you will be asked here, once, before
             anything is taken.
           </p>

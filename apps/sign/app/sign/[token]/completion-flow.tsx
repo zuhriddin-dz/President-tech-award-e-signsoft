@@ -108,7 +108,7 @@ export function CompletionFlow({
                 No Thanks
               </button>
               <p className="mt-4 text-xs text-ink-muted">
-                We never ask for a password on this page. Account setup happens on eSignSoft itself.
+                We never ask for a password on this page. Account setup happens on E-SIGNSOFT itself.
               </p>
             </div>
           </div>

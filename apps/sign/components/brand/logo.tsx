@@ -1,5 +1,5 @@
 /**
- * The eSignSoft mark: a document with a seal pressed into its corner.
+ * The E-SIGNSOFT mark: a document with a seal pressed into its corner.
  *
  * Two shapes, on purpose. The mark has to survive a 16px favicon, invert to
  * white on the dark signing bar, and be redrawn with pdf-lib primitives on the
@@ -44,7 +44,7 @@ export function Mark({
       viewBox="0 0 32 32"
       className={className}
       role="img"
-      aria-label="eSignSoft"
+      aria-label="E-SIGNSOFT"
       focusable="false"
     >
       <rect x="4" y="3" width="16" height="22" rx="2.5" fill={page} />
@@ -84,10 +84,18 @@ export function Logo({
       <Mark size={size} tone={tone} />
       {showName && (
         <span
-          className={`font-bold tracking-tight ${tone === 'inverse' ? 'text-white' : 'text-ink'}`}
-          style={{ fontSize: Math.round(size * 0.72) }}
+          className={`font-bold ${tone === 'inverse' ? 'text-white' : 'text-ink'}`}
+          style={{
+            // Set in CAPS, so the two rules that govern lowercase are inverted:
+            // capitals need POSITIVE tracking to stop them jamming together,
+            // and they read visually larger than lowercase at the same size —
+            // hence 0.58 of the mark rather than the 0.72 a mixed-case
+            // wordmark would take.
+            fontSize: Math.round(size * 0.58),
+            letterSpacing: '0.055em',
+          }}
         >
-          eSignSoft
+          E-SIGNSOFT
         </span>
       )}
     </span>

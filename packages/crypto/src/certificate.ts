@@ -121,7 +121,7 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
     size: MARK * 0.24,
     color: ink,
   });
-  text('eSignSoft', { size: 15, bold: true, x: MARGIN + MARK + 8 });
+  text('E-SIGNSOFT', { size: 13, bold: true, x: MARGIN + MARK + 8 });
   y -= 30;
 
   text('Certificate of Completion', { size: 18, bold: true });

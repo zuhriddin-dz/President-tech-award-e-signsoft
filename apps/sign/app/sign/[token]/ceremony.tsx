@@ -476,7 +476,7 @@ export function Ceremony({ token }: { token: string }) {
                   const kind = fieldKind(f);
                   const value = filled[key] ?? '';
                   const active = activeField === key;
-                  // eSignSoft coords are normalized (0..1) — multiply by page px.
+                  // E-SIGNSOFT coords are normalized (0..1) — multiply by page px.
                   const style = {
                     left: f.x * p.width,
                     top: f.y * p.height,
@@ -507,7 +507,7 @@ export function Ceremony({ token }: { token: string }) {
                         key={key}
                         id={`field-${key}`}
                         style={style}
-                        title="Filled in by eSignSoft from the verified recipient"
+                        title="Filled in by E-SIGNSOFT from the verified recipient"
                         className="absolute flex items-center overflow-hidden rounded bg-surface-sunken/70 px-1 text-[12px] whitespace-nowrap text-ink"
                       >
                         {value}
@@ -663,7 +663,7 @@ export function Ceremony({ token }: { token: string }) {
       <footer className="flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-border bg-surface px-6 py-2.5 text-xs text-ink-muted">
         <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
           <Mark size={16} />
-          Powered by eSignSoft
+          Powered by E-SIGNSOFT
         </span>
         <span>·</span>
         <span>English (US)</span>
@@ -676,7 +676,7 @@ export function Ceremony({ token }: { token: string }) {
           Privacy
         </a>
         <span>·</span>
-        <span>© {new Date().getFullYear()} eSignSoft</span>
+        <span>© {new Date().getFullYear()} E-SIGNSOFT</span>
       </footer>
 
       {adoptOpen && view && (
