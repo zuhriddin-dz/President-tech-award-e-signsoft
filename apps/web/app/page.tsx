@@ -1,5 +1,17 @@
 import Link from 'next/link';
 import { auth } from '@clerk/nextjs/server';
+import {
+  ArrowRight,
+  Check,
+  Clock,
+  FileSearch,
+  FileSignature,
+  Lock,
+  Scale,
+  ShieldCheck,
+  Upload,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/primitives';
 
 /**
@@ -12,69 +24,154 @@ export default async function LandingPage() {
   const { userId } = await auth();
 
   return (
-    <div className="flex flex-col">
-      {/* Hero */}
-      <section className="border-b border-border bg-surface">
-        <div className="mx-auto max-w-5xl px-6 py-20 text-center">
-          <p className="text-sm font-medium text-brand">Documents that move themselves</p>
-          <h1 className="mx-auto mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            Send, sign, and prove every document — without the paperwork
-          </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-lg text-ink-muted">
-            DocFlow turns contracts, NDAs, onboarding and HR forms into secure, legally-defensible
-            e-signatures — with a tamper-evident certificate on every one.
-          </p>
-          <div className="mt-8 flex items-center justify-center gap-3">
+    <div className="flex min-h-screen flex-col bg-surface">
+      <header className="sticky top-0 z-30 border-b border-border bg-surface/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-6">
+          <Link href="/" className="flex items-center gap-2">
+            <Mark />
+            <span className="text-xl font-bold tracking-tight text-ink">DocFlow</span>
+          </Link>
+          <nav className="hidden gap-6 text-sm font-medium text-ink-muted md:flex">
+            <a href="#problem" className="hover:text-ink">
+              Why DocFlow
+            </a>
+            <a href="#how" className="hover:text-ink">
+              How it works
+            </a>
+            <a href="#security" className="hover:text-ink">
+              Security
+            </a>
+            <a href="#compare" className="hover:text-ink">
+              Compare
+            </a>
+          </nav>
+          <div className="ml-auto flex items-center gap-3">
             {userId ? (
-              <Link href="/dashboard">
-                <Button>Go to your dashboard</Button>
+              <Link href="/home">
+                <Button variant="dark">Go to DocFlow</Button>
               </Link>
             ) : (
               <>
-                <Link href="/sign-up">
-                  <Button>Get started free</Button>
+                <Link href="/sign-in" className="text-sm font-medium text-ink hover:text-brand">
+                  Sign in
                 </Link>
-                <Link href="/sign-in">
-                  <Button variant="ghost">Sign in</Button>
+                <Link href="/sign-up">
+                  <Button variant="dark">Get started free</Button>
                 </Link>
               </>
             )}
           </div>
         </div>
+      </header>
+
+      {/* Hero */}
+      <section className="bg-gradient-to-br from-hero-from to-hero-to">
+        <div className="mx-auto max-w-5xl px-6 py-24 text-center">
+          <p className="text-sm font-semibold tracking-wide text-white/70 uppercase">
+            Documents that move themselves
+          </p>
+          <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-6xl">
+            Send, sign, and prove every document — without the paperwork
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-lg text-white/80">
+            DocFlow turns contracts, NDAs, onboarding and HR forms into secure, legally-defensible
+            e-signatures — with a tamper-evident certificate on every one.
+          </p>
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+            {userId ? (
+              <Link href="/home">
+                <Button size="lg" className="bg-white text-brand hover:bg-white/90">
+                  Go to your dashboard
+                </Button>
+              </Link>
+            ) : (
+              <>
+                <Link href="/sign-up">
+                  <Button size="lg" className="bg-white text-brand hover:bg-white/90">
+                    Get started free
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+                <Link href="/sign-in">
+                  <span className="inline-flex h-12 items-center rounded-md px-6 text-[15px] font-semibold text-white ring-1 ring-white/40 transition-colors hover:bg-white/10">
+                    Sign in
+                  </span>
+                </Link>
+              </>
+            )}
+          </div>
+          <p className="mt-5 text-sm text-white/60">
+            No credit card. Signers never need an account.
+          </p>
+        </div>
       </section>
 
       {/* The problem */}
-      <section className="mx-auto max-w-5xl px-6 py-16">
-        <h2 className="text-center text-2xl font-semibold text-ink">Paperwork is slow and risky</h2>
-        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-3">
-          {[
-            ['Print, sign, scan, chase', 'Every signature is a round-trip of emails, printers and reminders. Deals wait on paper.'],
-            ['No proof it wasn’t changed', 'A scanned PDF can be altered and no one can tell. Disputes come down to “trust me.”'],
-            ['Nothing is organized', 'Signed files scatter across inboxes and drives. Finding one — or knowing its status — is a hunt.'],
-          ].map(([title, body]) => (
-            <div key={title} className="rounded-lg border border-border bg-surface p-5">
-              <h3 className="font-medium text-ink">{title}</h3>
+      <section id="problem" className="mx-auto max-w-6xl px-6 py-20">
+        <h2 className="text-center text-3xl font-semibold text-ink">Paperwork is slow and risky</h2>
+        <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-3">
+          {(
+            [
+              [
+                Clock,
+                'Print, sign, scan, chase',
+                'Every signature is a round-trip of emails, printers and reminders. Deals wait on paper.',
+              ],
+              [
+                FileSearch,
+                'No proof it wasn’t changed',
+                'A scanned PDF can be altered and nobody can tell. Disputes come down to “trust me”.',
+              ],
+              [
+                X,
+                'Nothing is organised',
+                'Signed files scatter across inboxes and drives. Finding one — or knowing its status — is a hunt.',
+              ],
+            ] as const
+          ).map(([Icon, title, body]) => (
+            <div key={title} className="rounded-xl border border-border bg-surface p-6">
+              <span className="grid h-11 w-11 place-items-center rounded-lg bg-danger-soft text-danger">
+                <Icon className="h-5 w-5" />
+              </span>
+              <h3 className="mt-4 text-lg font-semibold text-ink">{title}</h3>
               <p className="mt-2 text-sm text-ink-muted">{body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* How we manage documents end to end */}
-      <section className="border-y border-border bg-surface">
-        <div className="mx-auto max-w-5xl px-6 py-16">
-          <h2 className="text-center text-2xl font-semibold text-ink">
+      {/* How it works */}
+      <section id="how" className="border-y border-border bg-surface-muted">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <h2 className="text-center text-3xl font-semibold text-ink">
             Every document, managed end to end
           </h2>
-          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              ['1 · Upload', 'Drop in any PDF and it becomes a reusable template.'],
-              ['2 · Tag', 'Place signature, date, name and 9 more field types by drag-and-drop.'],
-              ['3 · Send', 'Email a secure, single-use signing link — no account needed to sign.'],
-              ['4 · Prove', 'Get the signed file plus a Certificate of Completion with a cryptographic seal.'],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-lg border border-border bg-surface p-5">
-                <h3 className="font-medium text-brand">{title}</h3>
+          <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                [Upload, '1 · Upload', 'Drop in any PDF and it becomes a reusable template.'],
+                [
+                  FileSignature,
+                  '2 · Tag',
+                  'Place signature, date, name and 14 more field types by drag-and-drop — per recipient.',
+                ],
+                [
+                  ArrowRight,
+                  '3 · Send',
+                  'Email a secure, single-use signing link. No account needed to sign.',
+                ],
+                [
+                  ShieldCheck,
+                  '4 · Prove',
+                  'Get the signed file plus a Certificate of Completion with a cryptographic seal.',
+                ],
+              ] as const
+            ).map(([Icon, title, body]) => (
+              <div key={title} className="rounded-xl border border-border bg-surface p-6">
+                <span className="grid h-11 w-11 place-items-center rounded-lg bg-brand-soft text-brand">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <h3 className="mt-4 font-semibold text-brand">{title}</h3>
                 <p className="mt-2 text-sm text-ink-muted">{body}</p>
               </div>
             ))}
@@ -83,51 +180,82 @@ export default async function LandingPage() {
       </section>
 
       {/* Security */}
-      <section className="mx-auto max-w-5xl px-6 py-16">
-        <h2 className="text-center text-2xl font-semibold text-ink">Security is the product</h2>
+      <section id="security" className="mx-auto max-w-6xl px-6 py-20">
+        <h2 className="text-center text-3xl font-semibold text-ink">Security is the product</h2>
         <p className="mx-auto mt-3 max-w-2xl text-center text-ink-muted">
           Signing is only worth something if it holds up. DocFlow is built so it does.
         </p>
-        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
-          {[
-            ['Tamper-evident by design', 'Every signed document is fingerprinted (SHA-256) and sealed with an Ed25519 signature. Change one byte and verification fails.'],
-            ['Isolated by the database itself', 'Your workspace’s data is walled off at the database layer, not just in code — so a bug can never leak it to another customer.'],
-            ['A hardened signing surface', 'Signing links are single-use, expiring, and stored only as hashes. The public signing app holds no keys and no database.'],
-            ['Legally aligned', 'Consent, a full audit trail, and identity anchoring follow the ESIGN/UETA model for remote electronic signatures.'],
-          ].map(([title, body]) => (
-            <div key={title} className="rounded-lg border border-border bg-surface p-5">
-              <h3 className="font-medium text-ink">{title}</h3>
-              <p className="mt-2 text-sm text-ink-muted">{body}</p>
+        <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {(
+            [
+              [
+                ShieldCheck,
+                'Tamper-evident by design',
+                'Every signed document is fingerprinted (SHA-256) and sealed with an Ed25519 signature bound to that document. Change one byte and verification fails — and you can run that check yourself, any time.',
+              ],
+              [
+                Lock,
+                'Isolated by the database itself',
+                'Your workspace’s data is walled off at the database layer, not just in application code — so a bug in our code can never leak it to another customer.',
+              ],
+              [
+                FileSignature,
+                'A hardened signing surface',
+                'Signing links are single-use, expiring, and stored only as hashes. The public signing app holds no keys and no database; it can forward a fixed set of requests and nothing else.',
+              ],
+              [
+                Scale,
+                'Legally aligned',
+                'Consent is recorded before any field can be filled, and the full audit trail — opened, agreed, signed, from where — follows the ESIGN/UETA model for remote electronic signatures.',
+              ],
+            ] as const
+          ).map(([Icon, title, body]) => (
+            <div key={title} className="flex gap-4 rounded-xl border border-border bg-surface p-6">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-success-soft text-success">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-lg font-semibold text-ink">{title}</h3>
+                <p className="mt-2 text-sm text-ink-muted">{body}</p>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Why us vs paper */}
-      <section className="border-t border-border bg-surface">
-        <div className="mx-auto max-w-3xl px-6 py-16">
-          <h2 className="text-center text-2xl font-semibold text-ink">DocFlow vs. paperwork</h2>
-          <div className="mt-8 overflow-hidden rounded-lg border border-border">
+      {/* Compare */}
+      <section id="compare" className="border-y border-border bg-surface-muted">
+        <div className="mx-auto max-w-3xl px-6 py-20">
+          <h2 className="text-center text-3xl font-semibold text-ink">DocFlow vs. paperwork</h2>
+          <div className="mt-10 overflow-hidden rounded-xl border border-border bg-surface">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-surface-muted text-left text-ink-muted">
-                  <th className="px-4 py-2 font-medium">&nbsp;</th>
-                  <th className="px-4 py-2 font-medium">Paper / scans</th>
-                  <th className="px-4 py-2 font-medium text-brand">DocFlow</th>
+                <tr className="border-b border-border text-left">
+                  <th className="px-5 py-3 font-medium text-ink-muted">&nbsp;</th>
+                  <th className="px-5 py-3 font-medium text-ink-muted">Paper / scans</th>
+                  <th className="px-5 py-3 font-semibold text-brand">DocFlow</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-ink">
-                {[
-                  ['Turnaround', 'Days', 'Minutes'],
-                  ['Proof of integrity', 'None', 'Cryptographic seal'],
-                  ['Audit trail', 'Manual', 'Automatic'],
-                  ['Find a signed doc', 'Search inboxes', 'One dashboard'],
-                  ['Cost per signature', 'Print + postage', 'Free to start'],
-                ].map(([label, paper, us]) => (
+                {(
+                  [
+                    ['Turnaround', 'Days', 'Minutes'],
+                    ['Proof of integrity', 'None', 'Cryptographic seal'],
+                    ['Audit trail', 'Manual', 'Automatic'],
+                    ['Find a signed doc', 'Search inboxes', 'One dashboard'],
+                    ['Multi-party signing', 'Chase each person', 'Routed automatically'],
+                    ['Cost per signature', 'Print + postage', 'Free to start'],
+                  ] as const
+                ).map(([label, paper, us]) => (
                   <tr key={label}>
-                    <td className="px-4 py-2 text-ink-muted">{label}</td>
-                    <td className="px-4 py-2">{paper}</td>
-                    <td className="px-4 py-2 font-medium">{us}</td>
+                    <td className="px-5 py-3 text-ink-muted">{label}</td>
+                    <td className="px-5 py-3">{paper}</td>
+                    <td className="px-5 py-3 font-semibold">
+                      <span className="inline-flex items-center gap-2">
+                        <Check className="h-4 w-4 text-success" />
+                        {us}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -137,19 +265,50 @@ export default async function LandingPage() {
       </section>
 
       {/* Final CTA */}
-      <section className="mx-auto max-w-5xl px-6 py-20 text-center">
-        <h2 className="text-2xl font-semibold text-ink">Start in a minute</h2>
-        <p className="mx-auto mt-2 max-w-xl text-ink-muted">
-          Choose a personal account or set up a company workspace — you pick at sign-up.
+      <section className="mx-auto max-w-5xl px-6 py-24 text-center">
+        <h2 className="text-3xl font-semibold text-ink">Start in a minute</h2>
+        <p className="mx-auto mt-3 max-w-xl text-ink-muted">
+          Choose a personal account or set up a company workspace — you pick at sign-up, and it
+          decides who else can see your agreements.
         </p>
         {!userId && (
-          <div className="mt-6 flex items-center justify-center gap-3">
+          <div className="mt-8 flex items-center justify-center gap-3">
             <Link href="/sign-up">
-              <Button>Get started free</Button>
+              <Button variant="dark" size="lg">
+                Get started free
+                <ArrowRight className="h-4 w-4" />
+              </Button>
             </Link>
           </div>
         )}
       </section>
+
+      <footer className="border-t border-border bg-surface-muted">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-ink-muted">
+          <span className="flex items-center gap-2 font-semibold text-ink">
+            <Mark />
+            DocFlow
+          </span>
+          <span>© {new Date().getFullYear()} DocFlow — secure e-signature and document workflow</span>
+        </div>
+      </footer>
     </div>
+  );
+}
+
+function Mark() {
+  return (
+    <svg viewBox="0 0 28 28" className="h-7 w-7" aria-hidden>
+      <rect width="28" height="28" rx="7" fill="var(--color-brand)" />
+      <path d="M9 7h6.5L20 11.5V21H9z" fill="#fff" opacity="0.92" />
+      <path d="M15.5 7v4.5H20" fill="var(--color-brand-soft)" />
+      <path
+        d="M11 17.6c1.6-.4 2.3-2.6 3.1-2.6.9 0 .6 2.2 1.6 2.2.7 0 1.2-.9 2.3-.9"
+        stroke="var(--color-brand)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
   );
 }

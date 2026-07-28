@@ -61,9 +61,9 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-  const ink = rgb(0.07, 0.09, 0.15);
-  const muted = rgb(0.42, 0.45, 0.5);
-  const rule = rgb(0.85, 0.87, 0.9);
+  const ink = rgb(0.039, 0.114, 0.18); // --color-ink #0a1d2e
+  const muted = rgb(0.353, 0.42, 0.478); // --color-ink-muted #5a6b7a
+  const rule = rgb(0.867, 0.89, 0.914); // --color-border #dde3e9
 
   let y = PAGE_H - MARGIN;
 

@@ -178,6 +178,9 @@ importers:
       '@docflow/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      lucide-react:
+        specifier: 1.27.0
+        version: 1.27.0(react@19.2.8)
       next:
         specifier: 16.2.11
         version: 16.2.11(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

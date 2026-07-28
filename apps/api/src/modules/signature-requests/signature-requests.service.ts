@@ -52,6 +52,13 @@ export interface SignatureRequestWire {
   viewedAt: string | null;
   completedAt: string | null;
   expiresAt: string;
+  lastChangeAt: string;
+  waitingOn: string | null;
+  senderEmail: string | null;
+  folderId: string | null;
+  folderName: string | null;
+  deletedAt: string | null;
+  hasSignedPdf: boolean;
 }
 
 export interface RecipientWire {
@@ -68,7 +75,6 @@ export interface RecipientWire {
 }
 
 export interface SignatureRequestDetailWire extends SignatureRequestWire {
-  senderEmail: string | null;
   recipients: RecipientWire[];
   consentAt: string | null;
   signatureMethod: string | null;
@@ -138,6 +144,8 @@ export class SignatureRequestsService {
           recipientEmail: firstSigner.email,
           recipientName: firstSigner.name ?? null,
           senderEmail: senderName,
+          emailSubject: input.subject?.trim() || null,
+          emailMessage: input.message?.trim() || null,
           createdByUserId: auth.userId,
           expiresAt,
         },
@@ -154,6 +162,12 @@ export class SignatureRequestsService {
           signingTokenHash: tokens.get(r.email)?.sha256 ?? null,
           sentAt: invitedNow(r) && r.role === 'signer' ? new Date() : null,
         })),
+      });
+      // "Last used" is about SENDING, not editing — so the favourites shelf
+      // ranks by what the sender actually puts to work.
+      await tx.template.updateMany({
+        where: { id: input.templateId },
+        data: { lastUsedAt: new Date() },
       });
       return created;
     });
@@ -173,6 +187,8 @@ export class SignatureRequestsService {
           documentName: template.name,
           senderName,
           signUrl: `${env.SIGN_APP_URL}/sign/${minted.token}`,
+          subject: input.subject?.trim() || null,
+          message: input.message?.trim() || null,
         };
         await this.queue.enqueue(
           INVITE_JOB,
@@ -254,7 +270,7 @@ export class SignatureRequestsService {
    * folder, can be replaced without cancelling the whole envelope.
    */
   async resend(id: string, recipientId: string): Promise<{ ok: true }> {
-    const { recipient, documentName, token } = await this.db.tx(async (tx) => {
+    const { recipient, documentName, token, subject, message } = await this.db.tx(async (tx) => {
       const row = await tx.signatureRequest.findUnique({ where: { id } });
       if (!row) throw new NotFoundException();
       if (row.status !== 'sent' && row.status !== 'viewed') {
@@ -273,7 +289,13 @@ export class SignatureRequestsService {
         where: { id: recipientId },
         data: { signingTokenHash: minted.sha256, sentAt: new Date(), status: 'sent' },
       });
-      return { recipient: rc, documentName: row.documentName, token: minted.token };
+      return {
+        recipient: rc,
+        documentName: row.documentName,
+        token: minted.token,
+        subject: row.emailSubject,
+        message: row.emailMessage,
+      };
     });
 
     await this.notify(
@@ -283,6 +305,8 @@ export class SignatureRequestsService {
         documentName,
         senderName: null,
         signUrl: `${env.SIGN_APP_URL}/sign/${token}`,
+        subject,
+        message,
       }),
       // Time-suffixed: a resend is a NEW delivery, not a duplicate of the
       // original invite, so it must not be deduplicated away.
@@ -333,13 +357,15 @@ export class SignatureRequestsService {
     const row = await this.db.tx((tx) =>
       tx.signatureRequest.findUnique({
         where: { id },
-        include: { recipients: { orderBy: { routingOrder: 'asc' } } },
+        include: {
+          recipients: { orderBy: { routingOrder: 'asc' } },
+          folder: { select: { name: true } },
+        },
       }),
     );
     if (!row) throw new NotFoundException();
     return {
       ...toWire(row),
-      senderEmail: row.senderEmail,
       recipients: row.recipients.map(recipientToWire),
       consentAt: row.consentAt?.toISOString() ?? null,
       signatureMethod: row.signatureMethod,
@@ -372,6 +398,25 @@ export class SignatureRequestsService {
           : `${base}.pdf`
         : 'certificate-of-completion.pdf';
     return { stream, size, filename };
+  }
+
+  /**
+   * One recipient's adopted signature image, for the sender's evidence view.
+   * Scoped through the request row (RLS) and matched on requestId, so a
+   * recipient id from another envelope cannot be read through this path.
+   */
+  async readSignatureImage(
+    id: string,
+    recipientId: string,
+  ): Promise<{ stream: Readable; size?: number }> {
+    const rc = await this.db.tx(async (tx) => {
+      const row = await tx.signatureRequest.findUnique({ where: { id }, select: { id: true } });
+      if (!row) throw new NotFoundException();
+      return tx.recipient.findUnique({ where: { id: recipientId } });
+    });
+    if (!rc || rc.requestId !== id || !rc.signatureImageKey) throw new NotFoundException();
+    const { stream, byteLength: size } = await this.storage.getStream(rc.signatureImageKey);
+    return { stream, size };
   }
 
   /**
@@ -435,34 +480,140 @@ export class SignatureRequestsService {
     };
   }
 
+  /**
+   * Every envelope the caller's workspace can see, newest movement first.
+   * Deleted rows come along too — the quick views filter client-side, and the
+   * Deleted view needs them. RLS is what scopes this, not any parameter here.
+   */
   async list(): Promise<SignatureRequestWire[]> {
     const rows = await this.db.tx((tx) =>
       tx.signatureRequest.findMany({
         orderBy: { sentAt: 'desc' },
-        take: 200,
-        include: { recipients: true },
+        take: 500,
+        include: { recipients: true, folder: { select: { name: true } } },
       }),
     );
     return rows.map(toWire);
   }
+
+  // ── Organisation: folders, filing, soft delete ───────────────────────────
+
+  async listFolders(): Promise<{ id: string; name: string; createdAt: string; count: number }[]> {
+    const rows = await this.db.tx((tx) =>
+      tx.folder.findMany({
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { requests: { where: { deletedAt: null } } } } },
+      }),
+    );
+    return rows.map((f) => ({
+      id: f.id,
+      name: f.name,
+      createdAt: f.createdAt.toISOString(),
+      count: f._count.requests,
+    }));
+  }
+
+  async createFolder(name: string): Promise<{ id: string; name: string; createdAt: string; count: number }> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new BadRequestException('a folder needs a name');
+    const row = await this.db.tx((tx) => tx.folder.create({ data: { name: trimmed } }));
+    return { id: row.id, name: row.name, createdAt: row.createdAt.toISOString(), count: 0 };
+  }
+
+  /**
+   * File (or unfile) envelopes. The folder is looked up under RLS first, so a
+   * folder id from another workspace is a 404 rather than a silent cross-tenant
+   * write — updateMany with a bad foreign key would otherwise fail obscurely.
+   */
+  async moveToFolder(requestIds: string[], folderId: string | null): Promise<{ moved: number }> {
+    const moved = await this.db.tx(async (tx) => {
+      if (folderId !== null) {
+        const folder = await tx.folder.findUnique({ where: { id: folderId } });
+        if (!folder) throw new NotFoundException();
+      }
+      const res = await tx.signatureRequest.updateMany({
+        where: { id: { in: requestIds } },
+        data: { folderId },
+      });
+      return res.count;
+    });
+    return { moved };
+  }
+
+  /**
+   * Move envelopes to the Deleted view. This is a SOFT delete on purpose: the
+   * signed artifacts and audit trail are evidence, and a sender tidying their
+   * inbox must not be able to destroy them.
+   */
+  async softDelete(requestIds: string[]): Promise<{ deleted: number }> {
+    const deleted = await this.db.tx(async (tx) => {
+      const res = await tx.signatureRequest.updateMany({
+        where: { id: { in: requestIds }, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      return res.count;
+    });
+    return { deleted };
+  }
+
+  async restore(requestIds: string[]): Promise<{ restored: number }> {
+    const restored = await this.db.tx(async (tx) => {
+      const res = await tx.signatureRequest.updateMany({
+        where: { id: { in: requestIds }, deletedAt: { not: null } },
+        data: { deletedAt: null },
+      });
+      return res.count;
+    });
+    return { restored };
+  }
 }
 
-function toWire(row: {
+interface ToWireRow {
   id: string;
   documentName: string;
   recipientEmail: string;
   recipientName: string | null;
   routingMode: string;
-  recipients?: { role: string; status: string }[];
+  recipients?: {
+    role: string;
+    status: string;
+    name?: string | null;
+    email?: string;
+    routingOrder?: number;
+  }[];
   status: string;
   sentAt: Date;
   viewedAt: Date | null;
   completedAt: Date | null;
   expiresAt: Date;
-}): SignatureRequestWire {
+  voidedAt?: Date | null;
+  deletedAt?: Date | null;
+  folderId?: string | null;
+  folder?: { name: string } | null;
+  signedPdfKey?: string | null;
+  senderEmail?: string | null;
+}
+
+function toWire(row: ToWireRow): SignatureRequestWire {
   // Progress counts only ever consider SIGNERS — a cc never blocks an envelope
   // and must not make it look unfinished.
-  const signers = (row.recipients ?? []).filter((r) => r.role === 'signer');
+  const all = row.recipients ?? [];
+  const signers = all.filter((r) => r.role === 'signer');
+  const live = row.status === 'sent' || row.status === 'viewed';
+  // Who the sender is actually waiting on: the earliest routing group that
+  // still has an unfinished signer. In parallel mode that's simply the first
+  // outstanding person.
+  const outstanding = signers
+    .filter((r) => r.status !== 'completed')
+    .sort((a, b) => (a.routingOrder ?? 1) - (b.routingOrder ?? 1))[0];
+
+  // "Last Change" is the most recent movement of ANY kind, so a viewed or
+  // cancelled envelope doesn't keep showing its send date as if nothing
+  // happened since.
+  const lastChange = [row.completedAt, row.voidedAt, row.viewedAt, row.sentAt]
+    .filter((d): d is Date => d instanceof Date)
+    .reduce((a, b) => (a.getTime() >= b.getTime() ? a : b));
+
   return {
     id: row.id,
     documentName: row.documentName,
@@ -476,6 +627,13 @@ function toWire(row: {
     viewedAt: row.viewedAt?.toISOString() ?? null,
     completedAt: row.completedAt?.toISOString() ?? null,
     expiresAt: row.expiresAt.toISOString(),
+    lastChangeAt: lastChange.toISOString(),
+    waitingOn: live && outstanding ? (outstanding.name?.trim() || outstanding.email || null) : null,
+    senderEmail: row.senderEmail ?? null,
+    folderId: row.folderId ?? null,
+    folderName: row.folder?.name ?? null,
+    deletedAt: row.deletedAt?.toISOString() ?? null,
+    hasSignedPdf: Boolean(row.signedPdfKey),
   };
 }
 

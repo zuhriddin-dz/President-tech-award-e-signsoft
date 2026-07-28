@@ -3,17 +3,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import {
-  CheckCircle2,
+  CircleCheck,
   Download,
-  FileCheck,
-  FileSignature,
   Loader2,
   PenLine,
+  Printer,
   ShieldAlert,
+  ShieldCheck,
+  SquareStack,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { SignerViewSchema, type SignerView, type TemplateField } from '@docflow/contracts';
-import { autoValue, canFinish, fieldKey, fieldKind, signatureProgress, unsignedFields } from '@/lib/sign-fields';
+import {
+  autoValue,
+  canFinish,
+  fieldKey,
+  fieldKind,
+  fieldLabel,
+  unsignedFields,
+} from '@/lib/sign-fields';
 import { AdoptSignatureDialog, type AdoptedSignature } from './adopt-signature-dialog';
+import { CompletionFlow } from './completion-flow';
 
 /**
  * The public signing ceremony. Talks ONLY to this app's own /relay route, which
@@ -23,10 +35,10 @@ import { AdoptSignatureDialog, type AdoptedSignature } from './adopt-signature-d
  * Order matches ESIGN/UETA practice: the signer sees WHAT they are signing,
  * agrees to sign electronically (recorded server-side), and only then can place
  * a signature — so the evidence never claims a signature predating consent.
- * Ported from tms's audited ceremony; adapted to DocFlow's normalized field
- * coordinates and async completion (the sealed copy is emailed, not returned).
  */
-const RENDER_WIDTH = 800;
+const BASE_WIDTH = 820;
+const ZOOM_STEPS = [0.6, 0.8, 1, 1.25, 1.5, 2];
+
 type PageSize = { width: number; height: number; scale: number };
 
 export function Ceremony({ token }: { token: string }) {
@@ -34,6 +46,7 @@ export function Ceremony({ token }: { token: string }) {
   const [dead, setDead] = useState(false);
   const [rendering, setRendering] = useState(true);
   const [pages, setPages] = useState<PageSize[]>([]);
+  const [zoomIndex, setZoomIndex] = useState(2);
 
   const [consented, setConsented] = useState(false);
   const [consentBusy, setConsentBusy] = useState(false);
@@ -45,6 +58,8 @@ export function Ceremony({ token }: { token: string }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [artifactsReady, setArtifactsReady] = useState(false);
+  const [showFieldList, setShowFieldList] = useState(false);
+  const [activeField, setActiveField] = useState<string | null>(null);
   const pendingField = useRef<string | null>(null);
   const [filled, setFilled] = useState<Record<string, string>>({});
 
@@ -53,6 +68,7 @@ export function Ceremony({ token }: { token: string }) {
 
   const fields: TemplateField[] = useMemo(() => view?.fields ?? [], [view]);
   const signedOn = useMemo(() => new Date().toLocaleDateString(), []);
+  const zoom = ZOOM_STEPS[zoomIndex]!;
 
   // 1. Resolve the link (records the first view server-side).
   useEffect(() => {
@@ -103,14 +119,17 @@ export function Ceremony({ token }: { token: string }) {
           'pdfjs-dist/build/pdf.worker.min.mjs',
           import.meta.url,
         ).toString();
-        const doc = await pdfjs.getDocument({ url: `/relay/${encodeURIComponent(token)}/document`, withCredentials: true }).promise;
+        const doc = await pdfjs.getDocument({
+          url: `/relay/${encodeURIComponent(token)}/document`,
+          withCredentials: true,
+        }).promise;
         if (cancelled) return;
         docRef.current = doc;
         const sizes: PageSize[] = [];
         for (let n = 1; n <= doc.numPages; n++) {
           const page = await doc.getPage(n);
           const base = page.getViewport({ scale: 1 });
-          const scale = RENDER_WIDTH / base.width;
+          const scale = (BASE_WIDTH * zoom) / base.width;
           const vp = page.getViewport({ scale });
           sizes.push({ width: vp.width, height: vp.height, scale });
         }
@@ -131,7 +150,7 @@ export function Ceremony({ token }: { token: string }) {
     return () => {
       cancelled = true;
     };
-  }, [view, token]);
+  }, [view, token, zoom]);
 
   // 3. Paint each page into its canvas.
   useEffect(() => {
@@ -139,20 +158,16 @@ export function Ceremony({ token }: { token: string }) {
     if (!doc || pages.length === 0) return;
     let cancelled = false;
     void (async () => {
-      try {
-        for (let i = 0; i < pages.length; i++) {
-          const canvas = canvasRefs.current[i];
-          if (!canvas || cancelled) return;
-          const page = await doc.getPage(i + 1);
-          const viewport = page.getViewport({ scale: pages[i]!.scale });
-          canvas.width = Math.floor(viewport.width);
-          canvas.height = Math.floor(viewport.height);
-          const ctx = canvas.getContext('2d');
-          if (!ctx) continue;
-          await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-        }
-      } finally {
-        if (!cancelled) setRendering(false);
+      for (let i = 0; i < pages.length; i++) {
+        const canvas = canvasRefs.current[i];
+        if (!canvas || cancelled) return;
+        const page = await doc.getPage(i + 1);
+        const viewport = page.getViewport({ scale: pages[i]!.scale });
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
       }
     })();
     return () => {
@@ -161,8 +176,8 @@ export function Ceremony({ token }: { token: string }) {
   }, [pages]);
 
   // Once signed, poll until the worker has sealed the PDF and built the
-  // certificate, then reveal the download buttons. Bounded so a stuck worker
-  // degrades to "check your email" rather than spinning forever.
+  // certificate, then reveal the downloads. Bounded so a stuck worker degrades
+  // to "check your email" rather than spinning forever.
   useEffect(() => {
     if (!done || artifactsReady) return;
     let cancelled = false;
@@ -256,7 +271,11 @@ export function Ceremony({ token }: { token: string }) {
       const res = await fetch(`/relay/${encodeURIComponent(token)}/submit`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ method: adopted.method, signatureImage: adopted.dataUrl, fieldValues: values }),
+        body: JSON.stringify({
+          method: adopted.method,
+          signatureImage: adopted.dataUrl,
+          fieldValues: values,
+        }),
       });
       if (!res.ok) {
         if (res.status === 404) return setDead(true);
@@ -271,63 +290,31 @@ export function Ceremony({ token }: { token: string }) {
     }
   }
 
-  const progress = signatureProgress(fields, filled);
+  /** Everything the SIGNER has to deal with — auto fields are the server's. */
+  const actionable = useMemo(() => fields.filter((f) => fieldKind(f) !== 'auto'), [fields]);
+  const filledCount = actionable.filter((f) => filled[fieldKey(f, fields.indexOf(f))]).length;
+  const remaining = unsignedFields(fields, filled);
   const ready = canFinish(fields, filled) && Boolean(adopted);
 
-  function scrollToNextUnsigned() {
-    const remaining = unsignedFields(fields, filled);
-    if (remaining.length === 0) return;
-    const target = remaining[0]!;
-    const idx = fields.indexOf(target);
-    document.getElementById(`field-${fieldKey(target, idx)}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
+  const goToField = useCallback(
+    (field: TemplateField) => {
+      const key = fieldKey(field, fields.indexOf(field));
+      setActiveField(key);
+      document
+        .getElementById(`field-${key}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    [fields],
+  );
 
   if (done) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center shadow-sm">
-          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
-            <CheckCircle2 className="h-8 w-8 text-success" />
-          </span>
-          <h1 className="mt-5 text-xl font-bold text-ink">Signed — you&apos;re all done</h1>
-          <p className="mt-2 text-sm text-ink-muted">
-            A copy and the Certificate of Completion are also on their way to{' '}
-            <span className="font-medium text-ink">{view?.signerEmail}</span>.
-          </p>
-
-          {/* The signed PDF is sealed by a background job, so it appears a beat
-              after signing — we poll, then offer it rather than promising a
-              download that isn't ready. */}
-          {artifactsReady ? (
-            <div className="mt-6 flex flex-col gap-2">
-              <a
-                href={`/relay/${encodeURIComponent(token)}/signed`}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-brand-ink hover:opacity-90"
-              >
-                <Download className="h-4 w-4" />
-                Download signed document
-              </a>
-              <a
-                href={`/relay/${encodeURIComponent(token)}/certificate`}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-ink hover:bg-surface-muted"
-              >
-                <FileCheck className="h-4 w-4" />
-                Certificate of Completion
-              </a>
-            </div>
-          ) : (
-            <p className="mt-6 flex items-center justify-center gap-2 text-sm text-ink-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Preparing your signed copy…
-            </p>
-          )}
-
-          <p className="mt-6 border-t border-border pt-4 text-xs text-ink-muted">
-            Keep the downloaded files for your records. This signing link cannot be used to sign
-            again.
-          </p>
-        </div>
-      </main>
+      <CompletionFlow
+        token={token}
+        documentName={view?.documentName ?? 'your document'}
+        signerEmail={view?.signerEmail ?? ''}
+        artifactsReady={artifactsReady}
+      />
     );
   }
 
@@ -347,25 +334,119 @@ export function Ceremony({ token }: { token: string }) {
   }
 
   return (
-    <main className="min-h-screen pb-28">
-      <header className="sticky top-0 z-20 border-b border-border bg-surface/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-4xl items-center gap-3">
-          <FileSignature className="h-5 w-5 text-brand" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-bold text-ink">{view?.documentName ?? 'Document'}</p>
-            {view && (
-              <p className="truncate text-xs text-ink-muted">For {view.recipientName ?? view.signerEmail}</p>
-            )}
-          </div>
-          {view && progress.total > 0 && consented && (
-            <span className="shrink-0 rounded-full bg-brand/10 px-2.5 py-0.5 text-xs font-medium text-brand">
-              {progress.done} of {progress.total} signed
-            </span>
+    <div className="flex h-screen flex-col">
+      {/*
+        ONE bar of chrome, not four. The document used to be fenced in on three
+        sides — an instruction bar above, an icon rail to the right, a status
+        bar below — which is a lot of furniture around the only thing the
+        signer came here to read. Progress, navigation, tools and Finish all
+        live in this single strip; the document gets everything else.
+      */}
+      <header className="flex shrink-0 flex-col gap-3 bg-brand-deep px-5 py-3 text-white lg:flex-row lg:items-center lg:gap-6">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-semibold">
+            {view?.documentName ?? 'Loading document…'}
+          </p>
+
+          {consented ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              <div
+                role="progressbar"
+                aria-valuenow={filledCount}
+                aria-valuemin={0}
+                aria-valuemax={actionable.length}
+                className="h-1.5 w-40 overflow-hidden rounded-full bg-white/25"
+              >
+                <div
+                  className="h-full rounded-full bg-white transition-[width]"
+                  style={{
+                    width: `${
+                      actionable.length === 0 ? 100 : (filledCount / actionable.length) * 100
+                    }%`,
+                  }}
+                />
+              </div>
+              <span className="text-sm text-white/90">
+                {filledCount} of {actionable.length} done
+              </span>
+              {remaining.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => remaining[0] && goToField(remaining[0])}
+                  className="text-sm font-semibold text-white underline underline-offset-4 hover:opacity-80"
+                >
+                  Go to the next one
+                </button>
+              ) : (
+                <span className="text-sm font-semibold text-white">
+                  Everything&apos;s filled in — select Finish.
+                </span>
+              )}
+            </div>
+          ) : (
+            <p className="mt-1 text-sm text-white/80">
+              Read it through, then agree at the bottom to start signing.
+            </p>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          <BarButton
+            label="Fields"
+            icon={<SquareStack className="h-5 w-5" />}
+            onClick={() => setShowFieldList((v) => !v)}
+            active={showFieldList}
+          />
+          <BarButton
+            label="Download"
+            icon={<Download className="h-5 w-5" />}
+            href={`/relay/${encodeURIComponent(token)}/document`}
+          />
+          <BarButton
+            label="Print"
+            icon={<Printer className="h-5 w-5" />}
+            onClick={() => window.print()}
+          />
+          <BarButton
+            label="Smaller"
+            icon={<ZoomOut className="h-5 w-5" />}
+            onClick={() => setZoomIndex((i) => Math.max(0, i - 1))}
+            disabled={zoomIndex === 0}
+          />
+          <span className="w-12 text-center text-sm tabular-nums">{Math.round(zoom * 100)}%</span>
+          <BarButton
+            label="Bigger"
+            icon={<ZoomIn className="h-5 w-5" />}
+            onClick={() => setZoomIndex((i) => Math.min(ZOOM_STEPS.length - 1, i + 1))}
+            disabled={zoomIndex === ZOOM_STEPS.length - 1}
+          />
+
+          {consented && (
+            <button
+              type="button"
+              onClick={() => void onFinish()}
+              disabled={!ready || submitting}
+              title={ready ? 'Sign and send' : 'Fill in every required field first'}
+              className="ml-3 inline-flex h-11 items-center gap-2 rounded-md bg-brand px-8 text-sm font-semibold text-brand-ink transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {submitting ? 'Finishing…' : 'Finish'}
+            </button>
           )}
         </div>
       </header>
 
-      <div className="mx-auto max-w-4xl p-4 sm:p-6">
+      {submitError && (
+        <p
+          role="alert"
+          className="shrink-0 bg-danger px-5 py-2 text-center text-sm font-medium text-white"
+        >
+          {submitError}
+        </p>
+      )}
+
+      {/* Document — full width, full height. */}
+      <main className="thin-scroll relative min-h-0 flex-1 overflow-auto p-6">
         {(!view || rendering) && (
           <p className="flex items-center justify-center gap-2 py-16 text-sm text-ink-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -373,11 +454,11 @@ export function Ceremony({ token }: { token: string }) {
           </p>
         )}
 
-        <div className="space-y-4">
+        <div className="mx-auto flex w-fit flex-col gap-6">
           {pages.map((p, i) => (
             <div
               key={i}
-              className="relative mx-auto overflow-hidden rounded-lg bg-surface shadow-md"
+              className="relative overflow-hidden rounded-lg bg-surface shadow-lg ring-1 ring-border"
               style={{ width: p.width, height: p.height }}
             >
               <canvas
@@ -391,6 +472,7 @@ export function Ceremony({ token }: { token: string }) {
                   const key = fieldKey(f, fi);
                   const kind = fieldKind(f);
                   const value = filled[key] ?? '';
+                  const active = activeField === key;
                   // DocFlow coords are normalized (0..1) — multiply by page px.
                   const style = {
                     left: f.x * p.width,
@@ -401,28 +483,18 @@ export function Ceremony({ token }: { token: string }) {
 
                   if (kind === 'signature') {
                     return (
-                      <button
+                      <SignatureBox
                         key={key}
                         id={`field-${key}`}
-                        type="button"
-                        onClick={() => onSignatureFieldClick(key)}
+                        field={f}
+                        value={value}
+                        active={active}
                         style={style}
-                        className={
-                          'absolute flex items-center justify-center rounded transition-colors ' +
-                          (value
-                            ? 'bg-transparent'
-                            : 'animate-pulse border-2 border-brand bg-brand/20 text-[11px] font-bold text-brand hover:bg-brand/30')
-                        }
-                      >
-                        {value ? (
-                          <img src={value} alt="Your signature" className="h-full w-full object-contain" />
-                        ) : (
-                          <span className="flex items-center gap-1">
-                            <PenLine className="h-3 w-3" />
-                            {f.type === 'initial' ? 'Initial' : 'Sign'}
-                          </span>
-                        )}
-                      </button>
+                        onClick={() => {
+                          setActiveField(key);
+                          onSignatureFieldClick(key);
+                        }}
+                      />
                     );
                   }
 
@@ -432,7 +504,8 @@ export function Ceremony({ token }: { token: string }) {
                         key={key}
                         id={`field-${key}`}
                         style={style}
-                        className="absolute flex items-center overflow-hidden whitespace-nowrap rounded bg-brand/5 px-1 text-[12px] text-ink"
+                        title="Filled in by DocFlow from the verified recipient"
+                        className="absolute flex items-center overflow-hidden rounded bg-surface-sunken/70 px-1 text-[12px] whitespace-nowrap text-ink"
                       >
                         {value}
                       </div>
@@ -445,7 +518,9 @@ export function Ceremony({ token }: { token: string }) {
                         key={key}
                         id={`field-${key}`}
                         type="checkbox"
+                        aria-label={fieldLabel(f)}
                         checked={value === 'true'}
+                        onFocus={() => setActiveField(key)}
                         onChange={(e) =>
                           setFilled((prev) => ({ ...prev, [key]: e.target.checked ? 'true' : '' }))
                         }
@@ -455,36 +530,111 @@ export function Ceremony({ token }: { token: string }) {
                     );
                   }
 
+                  if (f.type === 'dropdown' || f.type === 'radio') {
+                    return (
+                      <select
+                        key={key}
+                        id={`field-${key}`}
+                        aria-label={fieldLabel(f)}
+                        value={value}
+                        onFocus={() => setActiveField(key)}
+                        onChange={(e) => setFilled((prev) => ({ ...prev, [key]: e.target.value }))}
+                        style={style}
+                        className={`absolute rounded border bg-action-soft px-1 text-[12px] text-ink outline-none ${
+                          active ? 'border-brand' : 'border-action'
+                        }`}
+                      >
+                        <option value="">Choose…</option>
+                        {(f.options ?? []).map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  }
+
                   return (
                     <input
                       key={key}
                       id={`field-${key}`}
+                      aria-label={fieldLabel(f)}
                       value={value}
                       maxLength={200}
-                      placeholder={f.label ?? ''}
+                      inputMode={f.type === 'number' ? 'numeric' : undefined}
+                      placeholder={f.required ? `${fieldLabel(f)} *` : fieldLabel(f)}
+                      onFocus={() => setActiveField(key)}
                       onChange={(e) => setFilled((prev) => ({ ...prev, [key]: e.target.value }))}
                       style={style}
-                      className="absolute rounded border border-brand/50 bg-brand/5 px-1 text-[12px] text-ink outline-none focus:border-brand"
+                      className={`absolute rounded border bg-action-soft px-1 text-[12px] text-ink outline-none placeholder:text-ink-faint ${
+                        active ? 'border-brand' : 'border-action'
+                      }`}
                     />
                   );
                 })}
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Consent gate — over the document, so the signer sees WHAT they agree to. */}
+        {/* The field list is an OVERLAY, not a permanent column: it is
+            consulted occasionally, so it should not cost width all the time. */}
+        {showFieldList && (
+          <div className="absolute top-4 right-4 z-20 w-72 overflow-hidden rounded-lg border border-border bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <h2 className="font-bold text-ink">Fields</h2>
+              <button
+                type="button"
+                onClick={() => setShowFieldList(false)}
+                aria-label="Close panel"
+                className="rounded-md p-1 text-ink-muted hover:bg-surface-sunken"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ol className="thin-scroll max-h-[60vh] overflow-y-auto p-2">
+              {actionable.map((f) => {
+                const key = fieldKey(f, fields.indexOf(f));
+                const isDone = Boolean(filled[key]);
+                return (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      onClick={() => goToField(f)}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-brand-soft"
+                    >
+                      <span
+                        className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                          isDone ? 'bg-success text-white' : 'bg-action-soft text-warning'
+                        }`}
+                      >
+                        {isDone ? <CircleCheck className="h-3.5 w-3.5" /> : '!'}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-ink">{fieldLabel(f)}</span>
+                      <span className="shrink-0 text-xs text-ink-muted">p{f.page}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        )}
+      </main>
+
+      {/* Consent gate — under the document, so the signer sees WHAT they agree to. */}
       {view && !consented && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+        <div className="shrink-0 border-t border-border bg-surface px-6 py-5 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
           <div className="mx-auto max-w-4xl">
-            <h2 className="text-sm font-bold text-ink">Please review and agree before signing</h2>
-            <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+            <h2 className="flex items-center gap-2 font-bold text-ink">
+              <ShieldCheck className="h-5 w-5 text-brand" />
+              Please review and agree before signing
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-ink-muted">
               By continuing you agree to sign this document electronically and that your electronic
               signature is as legally binding as a handwritten one. We record the time you opened
               this link, agreed, and signed, along with your IP address, as proof of signing.
             </p>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <label className="flex items-center gap-2 text-sm font-medium text-ink">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <label className="flex items-center gap-2.5 text-sm font-medium text-ink">
                 <input
                   type="checkbox"
                   checked={agreeChecked}
@@ -497,7 +647,7 @@ export function Ceremony({ token }: { token: string }) {
                 type="button"
                 onClick={() => void acceptConsent()}
                 disabled={!agreeChecked || consentBusy}
-                className="flex items-center gap-2 rounded-lg bg-brand px-6 py-2.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-md bg-brand px-7 py-3 text-sm font-semibold text-brand-ink hover:bg-brand-hover disabled:opacity-50"
               >
                 {consentBusy && <Loader2 className="h-4 w-4 animate-spin" />}
                 Continue
@@ -507,48 +657,21 @@ export function Ceremony({ token }: { token: string }) {
         </div>
       )}
 
-      {/* Action bar — appears once consent is recorded. */}
-      {view && consented && !rendering && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
-          <div className="mx-auto flex max-w-4xl items-center gap-3">
-            <div className="min-w-0 flex-1">
-              {ready ? (
-                <p className="flex items-center gap-1.5 text-sm font-semibold text-success">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Everything is signed
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  onClick={scrollToNextUnsigned}
-                  className="text-sm font-semibold text-brand hover:underline"
-                >
-                  Next signature required →
-                </button>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => void onFinish()}
-              disabled={!ready || submitting}
-              className="flex items-center gap-2 rounded-lg bg-brand px-8 py-2.5 text-sm font-semibold text-brand-ink hover:opacity-90 disabled:opacity-50"
-            >
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? 'Finishing…' : 'Finish'}
-            </button>
-          </div>
-          {submitError && (
-            <p role="alert" className="mx-auto mt-2 max-w-4xl text-center text-xs font-medium text-danger">
-              {submitError}
-            </p>
-          )}
-          {ready && !submitError && (
-            <p className="mx-auto mt-2 max-w-4xl text-center text-xs text-ink-muted">
-              Finishing signs the document. The link expires once you finish.
-            </p>
-          )}
-        </div>
-      )}
+      <footer className="flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-border bg-surface px-6 py-2.5 text-xs text-ink-muted">
+        <span className="font-semibold text-ink">Powered by DocFlow</span>
+        <span>·</span>
+        <span>English (US)</span>
+        <span>·</span>
+        <a href="/terms" className="hover:text-ink">
+          Terms of Use
+        </a>
+        <span>·</span>
+        <a href="/privacy" className="hover:text-ink">
+          Privacy
+        </a>
+        <span>·</span>
+        <span>© {new Date().getFullYear()} DocFlow</span>
+      </footer>
 
       {adoptOpen && view && (
         <AdoptSignatureDialog
@@ -560,6 +683,89 @@ export function Ceremony({ token }: { token: string }) {
           }}
         />
       )}
-    </main>
+    </div>
+  );
+}
+
+/** A control in the dark bar: icon over label, legible on brand-deep. */
+function BarButton({
+  label,
+  icon,
+  onClick,
+  href,
+  active = false,
+  disabled = false,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  onClick?: () => void;
+  href?: string;
+  active?: boolean;
+  disabled?: boolean;
+}) {
+  const cls =
+    'inline-flex h-11 w-14 flex-col items-center justify-center gap-0.5 rounded-md text-[10px] font-medium transition-colors ' +
+    (active ? 'bg-white/20 text-white ' : 'text-white/85 hover:bg-white/15 hover:text-white ') +
+    (disabled ? 'pointer-events-none opacity-40' : '');
+
+  if (href) {
+    return (
+      <a href={href} className={cls} title={label}>
+        {icon}
+        {label}
+      </a>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={cls} title={label}>
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+/**
+ * A signature box, before and after. Once filled it renders like the finished
+ * document will — a bordered mark — so what the signer approves on screen is
+ * what the sealed PDF shows.
+ */
+function SignatureBox({
+  id,
+  field,
+  value,
+  active,
+  style,
+  onClick,
+}: {
+  id: string;
+  field: TemplateField;
+  value: string;
+  active: boolean;
+  style: React.CSSProperties;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      id={id}
+      type="button"
+      onClick={onClick}
+      style={style}
+      aria-label={value ? 'Signature applied' : `Add your ${fieldLabel(field).toLowerCase()}`}
+      className={
+        'absolute flex items-center justify-center rounded transition-colors ' +
+        (value
+          ? `border ${active ? 'border-brand' : 'border-border-strong'} bg-surface/60`
+          : 'border-2 border-action bg-action-soft text-[11px] font-bold text-warning hover:brightness-95')
+      }
+    >
+      {value ? (
+        <img src={value} alt="Your signature" className="h-full w-full object-contain p-0.5" />
+      ) : (
+        <span className="flex items-center gap-1">
+          <PenLine className="h-3 w-3" />
+          {field.type === 'initial' ? 'Initial' : field.type === 'stamp' ? 'Stamp' : 'Sign'}
+        </span>
+      )}
+    </button>
   );
 }

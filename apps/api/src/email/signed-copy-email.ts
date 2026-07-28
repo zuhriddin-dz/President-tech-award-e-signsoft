@@ -1,4 +1,5 @@
 import type { EmailMessage } from './email.types.js';
+import { emailFinePrint, emailParagraph, emailShell } from './theme.js';
 
 export interface SignedCopyData {
   documentName: string;
@@ -32,17 +33,14 @@ export function buildSignedCopyEmail(data: SignedCopyData): Omit<EmailMessage, '
     ? `${who} has signed <strong>${doc}</strong>.`
     : `Thanks for signing <strong>${doc}</strong>.`;
 
-  const html = `
-  <div style="font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;color:#111827">
-    <h2 style="font-size:18px;margin:0 0 12px">${data.isSender ? 'Document signed' : 'Your signed copy'}</h2>
-    <p style="font-size:14px;line-height:1.5;color:#374151">${lead}</p>
-    <p style="font-size:14px;line-height:1.5;color:#374151">
-      Attached you'll find the signed document and its <strong>Certificate of Completion</strong>,
-      which records who signed, when, and a cryptographic fingerprint proving the file
-      has not been altered since.
-    </p>
-    <p style="font-size:12px;color:#6b7280;line-height:1.5">Keep both files for your records.</p>
-  </div>`.trim();
+  const html = emailShell(
+    data.isSender ? 'Document signed' : 'Your signed copy',
+    emailParagraph(lead) +
+      emailParagraph(
+        `Attached you'll find the signed document and its <strong>Certificate of Completion</strong>, which records who signed, when, and a cryptographic fingerprint proving the file has not been altered since.`,
+      ) +
+      emailFinePrint('Keep both files for your records.'),
+  );
 
   const text = `${data.isSender ? 'Document signed' : 'Your signed copy'}
 

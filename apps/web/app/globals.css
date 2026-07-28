@@ -1,21 +1,138 @@
 @import 'tailwindcss';
 
-/* DocFlow — WHITE/LIGHT theme (owner decision 2026-07-24; dark was rejected).
-   Semantic tokens only — components never hardcode a color. */
+/* DocFlow — sky-blue identity (owner decision 2026-07-28).
+   Semantic tokens only: components never hardcode a hex, so the brand lives
+   here and in apps/sign/app/globals.css, which must stay in step.
+
+   Every value below was chosen against a measured WCAG ratio, not by eye.
+   contrast.spec.ts asserts the important ones — if you change a hex and that
+   test goes red, the new colour is illegal, not the test. */
 @theme {
-  --color-surface: #ffffff;
-  --color-surface-muted: #f7f8fa;
-  --color-border: #e5e7eb;
-  --color-ink: #111827;
-  --color-ink-muted: #6b7280;
-  --color-brand: #2563eb;
+  /* ── Brand ────────────────────────────────────────────────────────────
+     --color-brand carries white text (buttons), is a link colour on white,
+     and is the focus ring. White on it measures 4.70:1 — it clears AA for
+     normal text with about 4% to spare. NEVER lighten it, and never render
+     it at partial opacity behind white text: either move breaks every
+     primary button label in the product. */
+  --color-brand: #0077c8;
+  --color-brand-hover: #005a99;
+  /* Links under 14px, and ANY link sitting on a tinted row. Plain brand on
+     brand-soft is only 4.20:1; this is 5.79:1 there and 6.47:1 on white. A
+     token beats a rule nobody remembers at review time. */
+  --color-brand-link: #00629f;
   --color-brand-ink: #ffffff;
-  --color-success: #15803d;
-  --color-warning: #b45309;
-  --color-danger: #b91c1c;
+  /* Hover tint. Only 1.12:1 against white, so it can never be the SOLE
+     signal for a state — pair it with weight or an icon. */
+  --color-brand-soft: #e8f4fd;
+  /* Selected tint — one step past hover, so selected reads as different from
+     hovered without needing a border. */
+  --color-brand-soft-strong: #cfe7f5;
+  --color-brand-deep: #06304e;
+  --color-brand-darkest: #04121f;
+
+  /* Hero gradient: sky descending into water. Both stops carry white text
+     (5.97:1 and 13.63:1), because large numerals sit on this panel. */
+  --color-hero-from: #00699e;
+  --color-hero-to: #06304e;
+  /* Decorative ONLY — a low-opacity glow in the corner of the dark panel.
+     1.67:1 against white: nothing legible may sit on top of it. */
+  --color-hero-glow: #7dd3fc;
+
+  /* ── Surfaces ─────────────────────────────────────────────────────────
+     Re-cooled from purple-grey to blue-grey so the neutrals belong to the
+     new hue instead of quietly pointing at the old one. */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f8fa;
+  --color-surface-sunken: #e9eff4;
+  --color-border: #dde3e9;
+  --color-border-strong: #b9c3cd;
+
+  /* ── Text ─────────────────────────────────────────────────────────────
+     ink 17.10:1 and ink-muted 5.50:1 on white — both are real text colours.
+     ink-faint is 3.49:1 and FAILS AA: metadata only (a date under a chip, a
+     placeholder). If a string carries meaning on its own, use ink-muted. */
+  --color-ink: #0a1d2e;
+  --color-ink-muted: #5a6b7a;
+  --color-ink-faint: #7d8b98;
+
+  /* ── Status ───────────────────────────────────────────────────────────
+     info moved off blue to slate on purpose: with a blue brand, a blue
+     "info" chip reads as a brand element rather than a state. */
+  /* Darkened from #08804a, which was 4.41:1 on its own soft background —
+     just under AA. The contrast test caught it; it had been shipping. */
+  --color-success: #07733f;
+  --color-success-soft: #e6f4ec;
+  --color-warning: #a15c07;
+  --color-warning-soft: #fdf1e3;
+  --color-danger: #cc0000;
+  --color-danger-soft: #fdecec;
+  --color-info: #3d5a73;
+  --color-info-soft: #eef2f6;
+
+  /* ── Recipient colours ────────────────────────────────────────────────
+     Field outlines and avatars in the tagging editor, one per recipient.
+
+     Chosen by search, not by eye: the six were selected to maximise the
+     WORST pairwise separation across normal vision AND simulated protanopia,
+     deuteranopia and tritanopia, while every one stays >=3:1 on white
+     (WCAG 1.4.11) and clear of the brand blue. The old set's worst pair was
+     5.4 units apart under protanopia — effectively identical. This one's is
+     65.6.
+
+     Colour is still never the ONLY cue: each placed field also carries a
+     recipient index badge, because six colours cannot be relied on alone. */
+  --color-rc-1: #9333ea;
+  --color-rc-2: #ea580c;
+  --color-rc-3: #166534;
+  --color-rc-4: #e0489a;
+  --color-rc-5: #854d0e;
+  --color-rc-6: #86198f;
+
+  --font-sans:
+    'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial,
+    sans-serif;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
   background-color: var(--color-surface-muted);
   color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The document canvases scroll a lot — keep their scrollbars unobtrusive so
+   the chrome reads like an app, not a web page. */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.thin-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* Horizontal tab strips and card shelves scroll sideways on small screens
+   without advertising a scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Clerk's widgets sit inside our chrome — match the surrounding type. */
+.cl-rootBox,
+.cl-userButtonBox {
+  font-family: var(--font-sans);
 }

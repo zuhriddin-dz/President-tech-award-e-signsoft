@@ -10,8 +10,15 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import {
+  BulkRequestIdsSchema,
+  CreateFolderSchema,
+  MoveToFolderSchema,
   SendRequestSchema,
   VoidRequestSchema,
+  type BulkRequestIds,
+  type CreateFolder,
+  type Folder,
+  type MoveToFolder,
   type SendRequest,
   type VerifyResult,
 } from '@docflow/contracts';
@@ -83,6 +90,18 @@ export class SignatureRequestsController {
     });
   }
 
+  /** One recipient's adopted signature image, for the evidence view. */
+  @Get(':id/recipients/:recipientId/signature')
+  @Policy('viewer')
+  @Header('Cache-Control', 'private, max-age=300')
+  async signatureImage(
+    @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
+    @Param('recipientId', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) recipientId: string,
+  ): Promise<StreamableFile> {
+    const { stream, size } = await this.requests.readSignatureImage(id, recipientId);
+    return new StreamableFile(stream, { type: 'image/png', length: size });
+  }
+
   /** Cancel an envelope — every outstanding link dies, everyone is told. */
   @Post(':id/void')
   @Policy('member')
@@ -113,6 +132,35 @@ export class SignatureRequestsController {
     @Param('recipientId', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) recipientId: string,
   ): Promise<{ ok: true }> {
     return this.requests.remind(id, recipientId);
+  }
+
+  /**
+   * File envelopes into a folder (or out of one with folderId: null).
+   * Bulk by design — the Agreements table selects many rows and moves them.
+   */
+  @Post('move')
+  @Policy('member')
+  async move(
+    @Body(new ZodValidationPipe(MoveToFolderSchema)) body: MoveToFolder,
+  ): Promise<{ moved: number }> {
+    return this.requests.moveToFolder(body.requestIds, body.folderId);
+  }
+
+  /** Move envelopes to the Deleted view. Soft — evidence is never destroyed. */
+  @Post('delete')
+  @Policy('member')
+  async remove(
+    @Body(new ZodValidationPipe(BulkRequestIdsSchema)) body: BulkRequestIds,
+  ): Promise<{ deleted: number }> {
+    return this.requests.softDelete(body.requestIds);
+  }
+
+  @Post('restore')
+  @Policy('member')
+  async restore(
+    @Body(new ZodValidationPipe(BulkRequestIdsSchema)) body: BulkRequestIds,
+  ): Promise<{ restored: number }> {
+    return this.requests.restore(body.requestIds);
   }
 
   /** Re-hash the stored signed PDF and check the seal. */

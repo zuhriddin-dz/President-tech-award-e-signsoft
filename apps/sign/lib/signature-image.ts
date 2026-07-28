@@ -56,7 +56,7 @@ export function typedSignatureToPng(text: string, font: string): string | null {
   canvas.height = MAX_H;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
-  ctx.fillStyle = '#111827';
+  ctx.fillStyle = '#0a1d2e';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
   let size = 180;

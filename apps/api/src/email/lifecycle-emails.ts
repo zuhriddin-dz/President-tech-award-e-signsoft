@@ -1,4 +1,5 @@
 import type { EmailMessage } from './email.types.js';
+import { emailButton, emailFinePrint, emailParagraph, emailShell } from './theme.js';
 
 /**
  * The emails an envelope sends when it does NOT simply get signed: a nudge, a
@@ -14,15 +15,7 @@ function esc(value: string): string {
     .replaceAll('"', '&quot;');
 }
 
-function wrap(title: string, bodyHtml: string): string {
-  return `
-  <div style="font-family:system-ui,-apple-system,Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;color:#111827">
-    <h2 style="font-size:18px;margin:0 0 12px">${title}</h2>
-    ${bodyHtml}
-  </div>`.trim();
-}
-
-/** A polite nudge to someone who hasn't signed yet. Same link as the invite. */
+/** A polite nudge to someone who hasn't signed yet. */
 export function buildReminderEmail(data: {
   to: string;
   recipientName: string | null;
@@ -35,12 +28,15 @@ export function buildReminderEmail(data: {
   return {
     to: data.to,
     subject: `Reminder: "${data.documentName}" is waiting for your signature`,
-    html: wrap(
+    html: emailShell(
       'Still waiting for your signature',
-      `<p style="font-size:14px;line-height:1.5;color:#374151">${greeting} <strong>${doc}</strong> has been waiting
-       ${data.daysWaiting} day${data.daysWaiting === 1 ? '' : 's'} for you to sign.</p>
-       <p style="margin:24px 0"><a href="${data.signUrl}" style="background:#2563eb;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:500;display:inline-block">Review &amp; sign</a></p>
-       <p style="font-size:12px;color:#6b7280">If you've already signed, you can ignore this.</p>`,
+      emailParagraph(
+        `${greeting} <strong>${doc}</strong> has been waiting ${data.daysWaiting} day${
+          data.daysWaiting === 1 ? '' : 's'
+        } for you to sign.`,
+      ) +
+        emailButton(data.signUrl, 'Review &amp; sign') +
+        emailFinePrint("If you've already signed, you can ignore this."),
     ),
     text: `${greeting}\n\n"${data.documentName}" has been waiting ${data.daysWaiting} day(s) for your signature.\n\nReview & sign: ${data.signUrl}\n\nIf you've already signed, ignore this.`,
   };
@@ -59,11 +55,11 @@ export function buildVoidedEmail(data: {
   return {
     to: data.to,
     subject: `Cancelled: "${data.documentName}" no longer needs your signature`,
-    html: wrap(
+    html: emailShell(
       'This document was cancelled',
-      `<p style="font-size:14px;line-height:1.5;color:#374151">${greeting} the sender has cancelled
-       <strong>${doc}</strong>, so it no longer needs your signature.${because}</p>
-       <p style="font-size:12px;color:#6b7280">Your signing link no longer works. No action is needed.</p>`,
+      emailParagraph(
+        `${greeting} the sender has cancelled <strong>${doc}</strong>, so it no longer needs your signature.${because}`,
+      ) + emailFinePrint('Your signing link no longer works. No action is needed.'),
     ),
     text: `${greeting}\n\nThe sender cancelled "${data.documentName}", so it no longer needs your signature.${data.reason ? ` Reason: ${data.reason}.` : ''}\n\nYour signing link no longer works. No action is needed.`,
   };
@@ -80,12 +76,14 @@ export function buildExpiredEmail(data: {
   return {
     to: data.to,
     subject: `Expired: "${data.documentName}" was not signed in time`,
-    html: wrap(
+    html: emailShell(
       'This document expired unsigned',
-      `<p style="font-size:14px;line-height:1.5;color:#374151"><strong>${doc}</strong> reached its expiry date without
-       being fully signed. Still outstanding: ${who}.</p>
-       <p style="font-size:14px;line-height:1.5;color:#374151">The signing links no longer work. Send it again if you
-       still need it signed.</p>`,
+      emailParagraph(
+        `<strong>${doc}</strong> reached its expiry date without being fully signed. Still outstanding: ${who}.`,
+      ) +
+        emailParagraph(
+          'The signing links no longer work. Send it again if you still need it signed.',
+        ),
     ),
     text: `"${data.documentName}" expired without being fully signed. Still outstanding: ${data.unsigned.join(', ') || 'the recipients'}.\n\nThe signing links no longer work. Send it again if you still need it signed.`,
   };

@@ -23,7 +23,20 @@ const IMAGE_KINDS = new Set(['signature', 'initial', 'stamp']);
 const AUTO_KINDS = new Set(['date', 'name', 'first_name', 'last_name', 'email']);
 
 /** The signer genuinely authors these. */
-const INPUT_KINDS = new Set(['text', 'checkbox', 'company', 'title']);
+const INPUT_KINDS = new Set([
+  'text',
+  'number',
+  'phone',
+  'address',
+  'checkbox',
+  'company',
+  'title',
+  'dropdown',
+  'radio',
+]);
+
+/** Choice fields: the value must be one the SENDER offered, or nothing. */
+const CHOICE_KINDS = new Set(['dropdown', 'radio']);
 
 export interface SignerFacts {
   recipientName: string | null;
@@ -89,7 +102,16 @@ export function resolveFieldValues(
     if (!INPUT_KINDS.has(field.type)) continue; // unknown type: stamp nothing
 
     const supplied = clientValues[field.id];
-    const value = typeof supplied === 'string' ? supplied.slice(0, 500) : '';
+    let value = typeof supplied === 'string' ? supplied.slice(0, 500) : '';
+
+    // A choice field can only ever hold one of the options the SENDER offered.
+    // Without this the signer could type any string into a "dropdown" and have
+    // it stamped, hashed and sealed as if it were an offered answer.
+    if (value && CHOICE_KINDS.has(field.type)) {
+      const allowed = field.options ?? [];
+      if (!allowed.includes(value)) value = '';
+    }
+
     if (value) values[field.id] = value;
     // A required input the signer left blank must not reach a sealed document.
     if (field.required && !value) missingRequired.push(field.id);

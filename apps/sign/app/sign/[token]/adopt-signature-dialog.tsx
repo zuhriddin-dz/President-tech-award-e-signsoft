@@ -57,7 +57,7 @@ export function AdoptSignatureDialog({
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#111827';
+    ctx.strokeStyle = '#0a1d2e';
   }, [tab]);
 
   function pointerPos(e: React.PointerEvent<HTMLCanvasElement>) {

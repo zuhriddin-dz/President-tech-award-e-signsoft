@@ -19,9 +19,31 @@ export type TenantKind = z.infer<typeof TenantKindSchema>;
 export const MeResponseSchema = z.object({
   userId: z.uuid(),
   role: MembershipRoleSchema,
-  tenant: z.object({ id: z.uuid(), name: z.string(), kind: TenantKindSchema }).nullable(),
+  tenant: z
+    .object({
+      id: z.uuid(),
+      name: z.string(),
+      kind: TenantKindSchema,
+      /** When the workspace was created — drives the trial countdown. */
+      createdAt: z.iso.datetime(),
+    })
+    .nullable(),
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
+
+/** One person in the workspace, as the Admin page lists them. */
+export const WorkspaceMemberSchema = z.object({
+  id: z.uuid(),
+  email: z.string(),
+  role: MembershipRoleSchema,
+  joinedAt: z.iso.datetime(),
+});
+export type WorkspaceMember = z.infer<typeof WorkspaceMemberSchema>;
+
+export const WorkspaceMemberListSchema = z.object({
+  members: z.array(WorkspaceMemberSchema),
+});
+export type WorkspaceMemberList = z.infer<typeof WorkspaceMemberListSchema>;
 
 /** API route paths — one source of truth for both sides of the BFF. */
 export const API_PATHS = {
@@ -30,8 +52,40 @@ export const API_PATHS = {
   documents: '/documents',
   templates: '/templates',
   signatureRequests: '/signature-requests',
+  folders: '/folders',
   onboardingPersonal: '/onboarding/personal',
 } as const;
+
+// ── Folders ─────────────────────────────────────────────────────────────────
+
+/** A sender-created filing folder. Organisational only — never a permission. */
+export const FolderSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  createdAt: z.iso.datetime(),
+  /** Envelopes currently filed here (excludes deleted). */
+  count: z.number().int().nonnegative(),
+});
+export type Folder = z.infer<typeof FolderSchema>;
+
+export const FolderListSchema = z.object({ folders: z.array(FolderSchema) });
+export type FolderList = z.infer<typeof FolderListSchema>;
+
+export const CreateFolderSchema = z.object({ name: z.string().min(1).max(120) });
+export type CreateFolder = z.infer<typeof CreateFolderSchema>;
+
+/** Bulk file/unfile. `folderId: null` moves envelopes back out to no folder. */
+export const MoveToFolderSchema = z.object({
+  requestIds: z.array(z.uuid()).min(1).max(200),
+  folderId: z.uuid().nullable(),
+});
+export type MoveToFolder = z.infer<typeof MoveToFolderSchema>;
+
+/** Bulk soft-delete / restore. Evidence is never destroyed, only hidden. */
+export const BulkRequestIdsSchema = z.object({
+  requestIds: z.array(z.uuid()).min(1).max(200),
+});
+export type BulkRequestIds = z.infer<typeof BulkRequestIdsSchema>;
 
 // ── Signature requests (send flow) ──────────────────────────────────────────
 
@@ -74,6 +128,9 @@ export const SendRequestSchema = z
     templateId: z.uuid(),
     routingMode: RoutingModeSchema.default('parallel'),
     recipients: z.array(SendRecipientSchema).min(1).max(50),
+    /** The sender's own subject line and note on the invitation email. */
+    subject: z.string().max(200).optional(),
+    message: z.string().max(2000).optional(),
   })
   .refine((b) => b.recipients.some((r) => r.role === 'signer'), {
     message: 'at least one recipient must be a signer',
@@ -114,6 +171,18 @@ export const SignatureRequestSchema = z.object({
   viewedAt: z.iso.datetime().nullable(),
   completedAt: z.iso.datetime().nullable(),
   expiresAt: z.iso.datetime(),
+  /** Most recent movement of any kind — the "Last Change" column. */
+  lastChangeAt: z.iso.datetime(),
+  /** Who the sender is still waiting on, if anyone. */
+  waitingOn: z.string().nullable(),
+  folderId: z.uuid().nullable(),
+  folderName: z.string().nullable(),
+  /** Who sent it, captured at send time. */
+  senderEmail: z.string().nullable(),
+  /** Set once the sender has moved it to the Deleted view. */
+  deletedAt: z.iso.datetime().nullable(),
+  /** True once the sealed copy exists and can be downloaded from a list row. */
+  hasSignedPdf: z.boolean(),
 });
 export type SignatureRequest = z.infer<typeof SignatureRequestSchema>;
 
@@ -127,7 +196,6 @@ export type SignatureRequestList = z.infer<typeof SignatureRequestListSchema>;
  * Completion attests, in structured form, for the sender's detail page.
  */
 export const SignatureRequestDetailSchema = SignatureRequestSchema.extend({
-  senderEmail: z.string().nullable(),
   /** Everyone on the envelope, in routing order. */
   recipients: z.array(RecipientSchema),
   consentAt: z.iso.datetime().nullable(),
@@ -166,8 +234,14 @@ export type VerifyResult = z.infer<typeof VerifyResultSchema>;
 // ── Templates & field layout ────────────────────────────────────────────────
 
 /**
- * The 12 field types (DocuSign-aligned). Signature/initial/stamp are drawn
- * marks; date/name/…/title auto-fill from the signer; text/checkbox are inputs.
+ * The field types a sender can place. Three families, and the distinction is
+ * a security boundary, not a UI one:
+ *   - marks   (signature/initial/stamp) take the adopted signature image;
+ *   - auto    (date/name/first_name/last_name/email) are computed by the
+ *             SERVER from the request row and never accepted from the client;
+ *   - inputs  (the rest) are genuinely authored by the signer.
+ * See apps/api/src/modules/signing/field-values.ts — that file is the one that
+ * decides, and this list must stay in step with it.
  */
 export const FieldTypeSchema = z.enum([
   'signature',
@@ -181,7 +255,12 @@ export const FieldTypeSchema = z.enum([
   'company',
   'title',
   'text',
+  'number',
+  'phone',
+  'address',
   'checkbox',
+  'dropdown',
+  'radio',
 ]);
 export type FieldType = z.infer<typeof FieldTypeSchema>;
 
@@ -205,10 +284,20 @@ export const TemplateFieldSchema = z
     required: z.boolean().default(true),
     recipientKey: z.string().min(1).max(64).default('signer'),
     label: z.string().max(200).optional(),
+    /**
+     * The permitted values for a dropdown or radio field. The server rejects
+     * anything outside this list at submit time, so the choices a sender
+     * offers are the only choices that can ever end up in the sealed PDF.
+     */
+    options: z.array(z.string().min(1).max(120)).max(30).optional(),
   })
   .refine((f) => f.x + f.w <= 1.0001 && f.y + f.h <= 1.0001, {
     message: 'field extends past the page bounds',
-  });
+  })
+  .refine(
+    (f) => !['dropdown', 'radio'].includes(f.type) || (f.options?.length ?? 0) >= 1,
+    { message: 'a dropdown or radio field needs at least one option' },
+  );
 export type TemplateField = z.infer<typeof TemplateFieldSchema>;
 
 export const TemplateFieldsSchema = z.array(TemplateFieldSchema).max(500);
@@ -222,6 +311,10 @@ export const TemplateSchema = z.object({
   pageCount: z.number().int().positive(),
   pageSizes: z.array(PageSizeSchema),
   fields: TemplateFieldsSchema,
+  /** Starred — drives the home page's favourites shelf. */
+  favorite: z.boolean(),
+  /** When an envelope was last SENT from it (not when it was last edited). */
+  lastUsedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -234,16 +327,38 @@ export type TemplateSummary = z.infer<typeof TemplateSummarySchema>;
 export const TemplateListSchema = z.object({ templates: z.array(TemplateSummarySchema) });
 export type TemplateList = z.infer<typeof TemplateListSchema>;
 
-/** PATCH body: rename and/or replace the whole field layout. */
+/** PATCH body: rename, star, and/or replace the whole field layout. */
 export const TemplateUpdateSchema = z
   .object({
     name: z.string().min(1).max(200).optional(),
     fields: TemplateFieldsSchema.optional(),
+    favorite: z.boolean().optional(),
   })
-  .refine((b) => b.name !== undefined || b.fields !== undefined, {
+  .refine((b) => b.name !== undefined || b.fields !== undefined || b.favorite !== undefined, {
     message: 'nothing to update',
   });
 export type TemplateUpdate = z.infer<typeof TemplateUpdateSchema>;
+
+/**
+ * The starter library: ready-made documents a new workspace can send on day
+ * one. The API renders them on demand, so a starter is a catalog entry here,
+ * not a stored file.
+ */
+export const StarterTemplateSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  category: z.string(),
+  summary: z.string(),
+});
+export type StarterTemplate = z.infer<typeof StarterTemplateSchema>;
+
+export const StarterTemplateListSchema = z.object({
+  starters: z.array(StarterTemplateSchema),
+});
+export type StarterTemplateList = z.infer<typeof StarterTemplateListSchema>;
+
+export const StarterPickSchema = z.object({ key: z.string().min(1).max(64) });
+export type StarterPick = z.infer<typeof StarterPickSchema>;
 
 export const DocumentSchema = z.object({
   id: z.uuid(),

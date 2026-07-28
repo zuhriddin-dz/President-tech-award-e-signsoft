@@ -1,21 +1,78 @@
 @import 'tailwindcss';
 
-/* DocFlow — WHITE/LIGHT theme (owner decision 2026-07-24; dark was rejected).
-   Semantic tokens only — components never hardcode a color. */
+/* DocFlow signing app — the same sky-blue identity as the product, but this
+   is the internet-facing surface, so nothing here loads from another origin.
+   Keep in step with apps/web/app/globals.css; see that file for the contrast
+   reasoning behind each value. */
 @theme {
-  --color-surface: #ffffff;
-  --color-surface-muted: #f7f8fa;
-  --color-border: #e5e7eb;
-  --color-ink: #111827;
-  --color-ink-muted: #6b7280;
-  --color-brand: #2563eb;
+  /* White on brand = 4.70:1 (AA). Never lighten it, never alpha-blend it
+     behind white text — the ceremony's Finish button depends on this. */
+  --color-brand: #0077c8;
+  --color-brand-hover: #005a99;
+  --color-brand-link: #00629f;
   --color-brand-ink: #ffffff;
-  --color-success: #15803d;
-  --color-warning: #b45309;
-  --color-danger: #b91c1c;
+  --color-brand-soft: #e8f4fd;
+  --color-brand-soft-strong: #cfe7f5;
+  /* The ceremony's top bar. White on it = 13.63:1 (AAA) — deliberately the
+     strongest surface in the product, because it is the one thing a stranger
+     reads under time pressure. */
+  --color-brand-deep: #06304e;
+  --color-brand-darkest: #04121f;
+
+  --color-surface: #ffffff;
+  --color-surface-muted: #f5f8fa;
+  --color-surface-sunken: #e9eff4;
+  --color-border: #dde3e9;
+  --color-border-strong: #b9c3cd;
+
+  --color-ink: #0a1d2e;
+  --color-ink-muted: #5a6b7a;
+  --color-ink-faint: #7d8b98;
+
+  --color-success: #07733f;
+  --color-warning: #a15c07;
+  --color-danger: #cc0000;
+
+  /* "This field needs you." Amber is the direct complement of the new brand
+     blue, so an unfilled field now stands out MORE than it did against
+     purple. Unchanged on purpose. */
+  --color-action: #fbbf24;
+  --color-action-soft: #fef3c7;
+
+  --font-sans:
+    'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial,
+    sans-serif;
+}
+
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background-color: var(--color-surface-muted);
+  background-color: var(--color-surface-sunken);
   color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.thin-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--color-border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* The adopted-signature mark, rendered in the "Signed by:" box. System
+   handwriting faces only — no webfont on the internet-facing app. */
+.signature-script {
+  font-family: 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive;
 }

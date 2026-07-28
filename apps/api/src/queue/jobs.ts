@@ -12,6 +12,9 @@ export interface SigningInviteJob {
   senderName: string | null;
   /** Full signing URL including the raw single-use token. */
   signUrl: string;
+  /** The sender's own subject line and note, if they wrote them. */
+  subject?: string | null;
+  message?: string | null;
 }
 
 // The completion pipeline (Phase 10): stamp → hash → seal → certificate →

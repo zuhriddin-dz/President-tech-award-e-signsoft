@@ -12,6 +12,7 @@ import { DocumentsService } from './modules/documents/documents.service.js';
 import { TemplatesController } from './modules/templates/templates.controller.js';
 import { TemplatesService } from './modules/templates/templates.service.js';
 import { SignatureRequestsController } from './modules/signature-requests/signature-requests.controller.js';
+import { FoldersController } from './modules/signature-requests/folders.controller.js';
 import { SignatureRequestsService } from './modules/signature-requests/signature-requests.service.js';
 import { SigningController } from './modules/signing/signing.controller.js';
 import { SigningService } from './modules/signing/signing.service.js';
@@ -57,6 +58,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     DocumentsController,
     TemplatesController,
     SignatureRequestsController,
+    FoldersController,
     SigningController,
   ],
   providers: [

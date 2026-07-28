@@ -11,7 +11,12 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { TemplateUpdateSchema, type TemplateUpdate } from '@docflow/contracts';
+import {
+  StarterPickSchema,
+  TemplateUpdateSchema,
+  type StarterPick,
+  type TemplateUpdate,
+} from '@docflow/contracts';
 import { Policy } from '../../common/policy.js';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import {
@@ -51,6 +56,25 @@ export class TemplatesController {
   @Policy('viewer')
   async list(): Promise<{ templates: TemplateSummaryWire[] }> {
     return { templates: await this.templates.list() };
+  }
+
+  /**
+   * The starter library. Declared BEFORE @Get(':id') — Nest matches in
+   * declaration order, and 'starters' would otherwise be parsed as a uuid.
+   */
+  @Get('starters')
+  @Policy('viewer')
+  starters(): { starters: { key: string; name: string; category: string; summary: string }[] } {
+    return { starters: this.templates.starters() };
+  }
+
+  /** Copy a starter into this workspace as a real, editable template. */
+  @Post('from-starter')
+  @Policy('member')
+  async fromStarter(
+    @Body(new ZodValidationPipe(StarterPickSchema)) body: StarterPick,
+  ): Promise<TemplateWire> {
+    return this.templates.createFromStarter(body.key);
   }
 
   @Get(':id')
