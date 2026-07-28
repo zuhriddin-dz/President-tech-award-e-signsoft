@@ -1,6 +1,6 @@
 @import 'tailwindcss';
 
-/* DocFlow signing app — the same sky-blue identity as the product, but this
+/* eSignSoft signing app — the same sky-blue identity as the product, but this
    is the internet-facing surface, so nothing here loads from another origin.
    Keep in step with apps/web/app/globals.css; see that file for the contrast
    reasoning behind each value. */

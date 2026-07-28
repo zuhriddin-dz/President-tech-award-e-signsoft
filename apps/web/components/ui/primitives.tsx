@@ -1,7 +1,7 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 
 /**
- * The DocFlow component vocabulary. Everything here is presentational and
+ * The eSignSoft component vocabulary. Everything here is presentational and
  * server-safe (no hooks, no handlers of its own) — the interactive shells
  * live in ./overlays.tsx.
  *

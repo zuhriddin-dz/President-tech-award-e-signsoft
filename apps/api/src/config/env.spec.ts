@@ -11,13 +11,13 @@ const REQUIRED = {
   REDIS_URL: 'redis://127.0.0.1:6379/0',
   ESIGN_SEAL_KEYS: '[{"kid":"t","privateKeyPkcs8Pem":"x","state":"active"}]',
   RESEND_API_KEY: 're_test',
-  EMAIL_FROM: 'DocFlow <onboarding@resend.dev>',
+  EMAIL_FROM: 'eSignSoft <onboarding@resend.dev>',
   SIGN_APP_URL: 'http://localhost:3300',
   SIGN_RELAY_SECRET: 'test_relay_secret_at_least_32_bytes_long_xx',
 };
 
 describe('env contract', () => {
-  it('applies defaults (DocFlow port convention: 5100)', () => {
+  it('applies defaults (eSignSoft port convention: 5100)', () => {
     const env = parseEnv({ ...REQUIRED });
     expect(env.PORT).toBe(5100);
     expect(env.NODE_ENV).toBe('development');

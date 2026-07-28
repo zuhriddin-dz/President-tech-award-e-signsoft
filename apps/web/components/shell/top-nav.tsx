@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 import { Check, ChevronDown, CircleHelp, ListChecks } from 'lucide-react';
 import { Button, ProgressBar } from '@/components/ui/primitives';
+import { Logo } from '@/components/brand/logo';
 import type { GetStartedStep } from './get-started';
 
 /**
@@ -37,9 +38,8 @@ export function TopNav({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-surface">
       <div className="flex h-16 items-center gap-6 px-6">
-        <Link href="/home" className="flex shrink-0 items-center gap-2">
-          <BrandMark />
-          <span className="text-xl font-bold tracking-tight text-ink">DocFlow</span>
+        <Link href="/home" className="flex shrink-0 items-center">
+          <Logo size={30} />
         </Link>
 
         <nav className="flex h-full min-w-0 flex-1 items-stretch gap-1">
@@ -176,23 +176,5 @@ function SetupPill({ steps }: { steps: GetStartedStep[] }) {
         </div>
       )}
     </div>
-  );
-}
-
-/** The mark: a document corner-fold with a signature stroke through it. */
-function BrandMark() {
-  return (
-    <svg viewBox="0 0 28 28" className="h-7 w-7" aria-hidden>
-      <rect width="28" height="28" rx="7" fill="var(--color-brand)" />
-      <path d="M9 7h6.5L20 11.5V21H9z" fill="#fff" opacity="0.92" />
-      <path d="M15.5 7v4.5H20" fill="var(--color-brand-soft)" />
-      <path
-        d="M11 17.6c1.6-.4 2.3-2.6 3.1-2.6.9 0 .6 2.2 1.6 2.2.7 0 1.2-.9 2.3-.9"
-        stroke="var(--color-brand)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
   );
 }

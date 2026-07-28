@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Mark } from '@/components/brand/logo';
 import { auth } from '@clerk/nextjs/server';
 import {
   ArrowRight,
@@ -17,7 +18,7 @@ import { Button } from '@/components/ui/primitives';
 /**
  * Public landing page — the first thing a logged-out visitor sees. It explains
  * the problem we solve, how the signing is secure, how documents are managed
- * end to end, and why to choose DocFlow over paperwork. The CTA leads into the
+ * end to end, and why to choose eSignSoft over paperwork. The CTA leads into the
  * personal-vs-company account choice at sign-up.
  */
 export default async function LandingPage() {
@@ -29,11 +30,11 @@ export default async function LandingPage() {
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-6">
           <Link href="/" className="flex items-center gap-2">
             <Mark />
-            <span className="text-xl font-bold tracking-tight text-ink">DocFlow</span>
+            <span className="text-xl font-bold tracking-tight text-ink">eSignSoft</span>
           </Link>
           <nav className="hidden gap-6 text-sm font-medium text-ink-muted md:flex">
             <a href="#problem" className="hover:text-ink">
-              Why DocFlow
+              Why eSignSoft
             </a>
             <a href="#how" className="hover:text-ink">
               How it works
@@ -48,7 +49,7 @@ export default async function LandingPage() {
           <div className="ml-auto flex items-center gap-3">
             {userId ? (
               <Link href="/home">
-                <Button variant="dark">Go to DocFlow</Button>
+                <Button variant="dark">Go to eSignSoft</Button>
               </Link>
             ) : (
               <>
@@ -74,7 +75,7 @@ export default async function LandingPage() {
             Send, sign, and prove every document — without the paperwork
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-white/80">
-            DocFlow turns contracts, NDAs, onboarding and HR forms into secure, legally-defensible
+            eSignSoft turns contracts, NDAs, onboarding and HR forms into secure, legally-defensible
             e-signatures — with a tamper-evident certificate on every one.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
@@ -183,7 +184,7 @@ export default async function LandingPage() {
       <section id="security" className="mx-auto max-w-6xl px-6 py-20">
         <h2 className="text-center text-3xl font-semibold text-ink">Security is the product</h2>
         <p className="mx-auto mt-3 max-w-2xl text-center text-ink-muted">
-          Signing is only worth something if it holds up. DocFlow is built so it does.
+          Signing is only worth something if it holds up. eSignSoft is built so it does.
         </p>
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2">
           {(
@@ -226,14 +227,14 @@ export default async function LandingPage() {
       {/* Compare */}
       <section id="compare" className="border-y border-border bg-surface-muted">
         <div className="mx-auto max-w-3xl px-6 py-20">
-          <h2 className="text-center text-3xl font-semibold text-ink">DocFlow vs. paperwork</h2>
+          <h2 className="text-center text-3xl font-semibold text-ink">eSignSoft vs. paperwork</h2>
           <div className="mt-10 overflow-hidden rounded-xl border border-border bg-surface">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-5 py-3 font-medium text-ink-muted">&nbsp;</th>
                   <th className="px-5 py-3 font-medium text-ink-muted">Paper / scans</th>
-                  <th className="px-5 py-3 font-semibold text-brand">DocFlow</th>
+                  <th className="px-5 py-3 font-semibold text-brand">eSignSoft</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-ink">
@@ -287,28 +288,12 @@ export default async function LandingPage() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-ink-muted">
           <span className="flex items-center gap-2 font-semibold text-ink">
             <Mark />
-            DocFlow
+            eSignSoft
           </span>
-          <span>© {new Date().getFullYear()} DocFlow — secure e-signature and document workflow</span>
+          <span>© {new Date().getFullYear()} eSignSoft — secure e-signature and document workflow</span>
         </div>
       </footer>
     </div>
   );
 }
 
-function Mark() {
-  return (
-    <svg viewBox="0 0 28 28" className="h-7 w-7" aria-hidden>
-      <rect width="28" height="28" rx="7" fill="var(--color-brand)" />
-      <path d="M9 7h6.5L20 11.5V21H9z" fill="#fff" opacity="0.92" />
-      <path d="M15.5 7v4.5H20" fill="var(--color-brand-soft)" />
-      <path
-        d="M11 17.6c1.6-.4 2.3-2.6 3.1-2.6.9 0 .6 2.2 1.6 2.2.7 0 1.2-.9 2.3-.9"
-        stroke="var(--color-brand)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-      />
-    </svg>
-  );
-}

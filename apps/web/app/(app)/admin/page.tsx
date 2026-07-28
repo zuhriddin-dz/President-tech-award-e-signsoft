@@ -152,7 +152,7 @@ export default async function AdminPage() {
             <div className="px-6 pb-6 text-sm text-ink-muted">
               <p>
                 Sign-in, passwords, multi-factor and workspace invitations are handled by our
-                identity provider — DocFlow never stores a password.
+                identity provider — eSignSoft never stores a password.
               </p>
               <Link
                 href="/account"

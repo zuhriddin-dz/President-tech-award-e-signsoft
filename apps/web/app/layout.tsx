@@ -3,7 +3,7 @@ import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'DocFlow',
+  title: 'eSignSoft',
   description: 'Documents that move themselves — secure e-signature and workflow automation.',
 };
 

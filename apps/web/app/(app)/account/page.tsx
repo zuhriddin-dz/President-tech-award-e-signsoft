@@ -4,7 +4,7 @@ import { UserProfile } from '@clerk/nextjs';
  * Your account. Rendered by our identity provider's own component on purpose:
  * password, MFA and connected-account changes are security operations, and
  * re-implementing their forms would mean handling credentials we deliberately
- * never touch. DocFlow stores no password.
+ * never touch. eSignSoft stores no password.
  */
 export default function AccountPage() {
   return (

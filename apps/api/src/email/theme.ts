@@ -25,10 +25,34 @@ export const EMAIL_THEME = {
   fontStack: "system-ui,-apple-system,Segoe UI,Arial,sans-serif",
 } as const;
 
-/** The standard outer wrapper: one column, constrained width, brand type. */
+/**
+ * The mark, rebuilt from HTML boxes rather than an image.
+ *
+ * Email is the one surface where our SVG cannot go: Outlook's Word engine
+ * ignores inline SVG, and Gmail refuses `data:` URIs in <img src>. Hosting a
+ * PNG would work but ties every email we have ever sent to a URL that must
+ * stay alive forever. So the mark is two divs — a page and a seal — which
+ * every client can draw. Outlook squares off the border-radius, which costs
+ * us the rounded corner and nothing else.
+ */
+function emailMark(): string {
+  const page = `display:inline-block;width:22px;height:30px;border-radius:3px;background:${EMAIL_THEME.brand};vertical-align:middle`;
+  const seal = `display:inline-block;width:18px;height:18px;border-radius:9px;background:${EMAIL_THEME.ink};vertical-align:middle;margin-left:-9px;margin-top:12px`;
+  return `<span style="${page}"></span><span style="${seal}"></span>`;
+}
+
+/**
+ * The standard outer wrapper: brand lockup, then one constrained column.
+ * The wordmark is TEXT, never an image — a recipient whose client blocks
+ * images still sees who sent this.
+ */
 export function emailShell(title: string, bodyHtml: string): string {
   return `
   <div style="font-family:${EMAIL_THEME.fontStack};max-width:520px;margin:0 auto;color:${EMAIL_THEME.ink}">
+    <div style="padding:0 0 20px">
+      ${emailMark()}
+      <span style="display:inline-block;margin-left:10px;font-size:19px;font-weight:700;letter-spacing:-.01em;color:${EMAIL_THEME.ink};vertical-align:middle">eSignSoft</span>
+    </div>
     <h2 style="font-size:18px;margin:0 0 12px">${title}</h2>
     ${bodyHtml}
   </div>`.trim();

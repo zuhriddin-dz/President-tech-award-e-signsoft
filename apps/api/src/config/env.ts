@@ -13,7 +13,7 @@ try {
 // Phases add variables HERE and nowhere else — no stray process.env reads.
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  // 5100 — DocFlow's port convention; 5000 belongs to the tms API on this machine.
+  // 5100 — eSignSoft's port convention; 5000 belongs to the tms API on this machine.
   PORT: z.coerce.number().int().min(1).max(65535).default(5100),
   CLERK_SECRET_KEY: z.string().min(20),
   // Runtime role over the pooled host — never neondb_owner (BYPASSRLS).

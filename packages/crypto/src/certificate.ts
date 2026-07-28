@@ -64,6 +64,7 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
   const ink = rgb(0.039, 0.114, 0.18); // --color-ink #0a1d2e
   const muted = rgb(0.353, 0.42, 0.478); // --color-ink-muted #5a6b7a
   const rule = rgb(0.867, 0.89, 0.914); // --color-border #dde3e9
+  const brand = rgb(0, 0.467, 0.784); // --color-brand #0077c8
 
   let y = PAGE_H - MARGIN;
 
@@ -100,6 +101,28 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
     });
     y -= 16;
   };
+
+  // The mark, drawn from primitives — the same page-and-seal geometry as
+  // apps/web/components/brand/logo.tsx, at 26pt. pdf-lib has no SVG importer,
+  // so two shapes is not a stylistic preference here, it is what makes the
+  // logo reproducible on a legal artifact at all.
+  const MARK = 26;
+  const markTop = y + 4;
+  page.drawRectangle({
+    x: MARGIN,
+    y: markTop - MARK * 0.78,
+    width: MARK * 0.5,
+    height: MARK * 0.78,
+    color: brand,
+  });
+  page.drawCircle({
+    x: MARGIN + MARK * 0.66,
+    y: markTop - MARK * 0.72,
+    size: MARK * 0.24,
+    color: ink,
+  });
+  text('eSignSoft', { size: 15, bold: true, x: MARGIN + MARK + 8 });
+  y -= 30;
 
   text('Certificate of Completion', { size: 18, bold: true });
   y -= 22;

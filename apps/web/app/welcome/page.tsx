@@ -11,7 +11,7 @@ export default function WelcomePage() {
       <div className="mx-auto max-w-4xl px-6 py-20">
         <div className="text-center">
           <h1 className="text-4xl font-semibold tracking-tight text-ink">
-            How will you use DocFlow?
+            How will you use eSignSoft?
           </h1>
           <p className="mt-3 text-ink-muted">
             This decides who else can see your agreements. You can add a company workspace later.

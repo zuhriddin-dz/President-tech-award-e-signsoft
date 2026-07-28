@@ -80,7 +80,7 @@ export function FieldProperties({
 
       {meta.family === 'auto' ? (
         <p className="mt-5 rounded-lg border border-border bg-surface-muted p-3 text-sm text-ink-muted">
-          DocFlow fills this in from the recipient we verified — the signer cannot type over it.
+          eSignSoft fills this in from the recipient we verified — the signer cannot type over it.
           That is what makes the value on the finished document trustworthy.
         </p>
       ) : meta.family === 'mark' ? (

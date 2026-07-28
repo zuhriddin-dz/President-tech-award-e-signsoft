@@ -71,7 +71,7 @@ export default async function RequestDetailPage({
       <article className="mt-6 overflow-hidden rounded-lg border border-border bg-surface">
         <header className="flex items-center justify-between border-b-4 border-brand px-6 py-4">
           <h2 className="text-lg font-bold text-ink">Certificate of Completion</h2>
-          <span className="text-sm font-semibold text-brand">DocFlow</span>
+          <span className="text-sm font-semibold text-brand">eSignSoft</span>
         </header>
 
         <Band>Document</Band>
@@ -110,7 +110,7 @@ export default async function RequestDetailPage({
             rows={[
               ['Status', 'Original'],
               ['Holder', r.senderEmail ?? '—'],
-              ['Location', 'DocFlow'],
+              ['Location', 'eSignSoft'],
               ['Created', auditStamp(r.sentAt)],
             ]}
           />

@@ -24,6 +24,7 @@ import {
   fieldLabel,
   unsignedFields,
 } from '@/lib/sign-fields';
+import { Mark } from '@/components/brand/logo';
 import { AdoptSignatureDialog, type AdoptedSignature } from './adopt-signature-dialog';
 import { CompletionFlow } from './completion-flow';
 
@@ -343,6 +344,8 @@ export function Ceremony({ token }: { token: string }) {
         live in this single strip; the document gets everything else.
       */}
       <header className="flex shrink-0 flex-col gap-3 bg-brand-deep px-5 py-3 text-white lg:flex-row lg:items-center lg:gap-6">
+        <Mark size={30} tone="inverse" className="hidden shrink-0 lg:block" />
+
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-semibold">
             {view?.documentName ?? 'Loading document…'}
@@ -473,7 +476,7 @@ export function Ceremony({ token }: { token: string }) {
                   const kind = fieldKind(f);
                   const value = filled[key] ?? '';
                   const active = activeField === key;
-                  // DocFlow coords are normalized (0..1) — multiply by page px.
+                  // eSignSoft coords are normalized (0..1) — multiply by page px.
                   const style = {
                     left: f.x * p.width,
                     top: f.y * p.height,
@@ -504,7 +507,7 @@ export function Ceremony({ token }: { token: string }) {
                         key={key}
                         id={`field-${key}`}
                         style={style}
-                        title="Filled in by DocFlow from the verified recipient"
+                        title="Filled in by eSignSoft from the verified recipient"
                         className="absolute flex items-center overflow-hidden rounded bg-surface-sunken/70 px-1 text-[12px] whitespace-nowrap text-ink"
                       >
                         {value}
@@ -658,7 +661,10 @@ export function Ceremony({ token }: { token: string }) {
       )}
 
       <footer className="flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-border bg-surface px-6 py-2.5 text-xs text-ink-muted">
-        <span className="font-semibold text-ink">Powered by DocFlow</span>
+        <span className="inline-flex items-center gap-1.5 font-semibold text-ink">
+          <Mark size={16} />
+          Powered by eSignSoft
+        </span>
         <span>·</span>
         <span>English (US)</span>
         <span>·</span>
@@ -670,7 +676,7 @@ export function Ceremony({ token }: { token: string }) {
           Privacy
         </a>
         <span>·</span>
-        <span>© {new Date().getFullYear()} DocFlow</span>
+        <span>© {new Date().getFullYear()} eSignSoft</span>
       </footer>
 
       {adoptOpen && view && (

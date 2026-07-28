@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Logo } from '@/components/brand/logo';
 
 /**
  * Shared shell + copy for the two legal pages, so the wording a signer reads
@@ -13,16 +14,16 @@ export interface LegalSection {
 
 export const TERMS: LegalSection[] = [
   {
-    heading: 'What DocFlow does',
+    heading: 'What eSignSoft does',
     body: [
-      'DocFlow lets you send a document for electronic signature, and gives every completed document a sealed copy plus a Certificate of Completion recording who signed, when, and from where.',
+      'eSignSoft lets you send a document for electronic signature, and gives every completed document a sealed copy plus a Certificate of Completion recording who signed, when, and from where.',
       'You are responsible for the content of what you send and for having the right to send it to the people you address it to.',
     ],
   },
   {
     heading: 'Electronic signatures',
     body: [
-      'Signing electronically through DocFlow is intended to create a binding signature under the US ESIGN Act and UETA, and equivalent regimes elsewhere. Before anyone can sign they are shown the Electronic Record and Signature Disclosure and must actively agree to it.',
+      'Signing electronically through eSignSoft is intended to create a binding signature under the US ESIGN Act and UETA, and equivalent regimes elsewhere. Before anyone can sign they are shown the Electronic Record and Signature Disclosure and must actively agree to it.',
       'Some documents cannot be signed electronically by law — wills, certain family-law and court filings, and some notices. It is your responsibility to know whether that applies to a document you send.',
     ],
   },
@@ -52,7 +53,7 @@ export const PRIVACY: LegalSection[] = [
   {
     heading: 'What we collect',
     body: [
-      'Account details: your name, email address, and workspace. Sign-in itself is handled by our identity provider — DocFlow never stores your password.',
+      'Account details: your name, email address, and workspace. Sign-in itself is handled by our identity provider — eSignSoft never stores your password.',
       'Documents you upload and send, and the field values entered on them.',
       'Signing evidence: when a link was opened, when consent was given, when the document was signed, and the IP address and browser used at each step. This is the proof that makes a signature stand up, so it is recorded deliberately and shown on the Certificate of Completion.',
     ],
@@ -80,7 +81,7 @@ export const PRIVACY: LegalSection[] = [
     heading: 'Your rights',
     body: [
       'You can ask for a copy of your data, ask us to correct it, or ask us to delete it. Where a document is evidence of a completed signature we may need to retain it, and we will tell you if that applies and why.',
-      'Contact: privacy@docflow.app',
+      'Contact: privacy@esignsoft.com',
     ],
   },
 ];
@@ -100,8 +101,8 @@ export function LegalPage({
     <div className="min-h-screen bg-surface-muted">
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-4">
-          <Link href={home} className="text-lg font-bold tracking-tight text-ink">
-            DocFlow
+          <Link href={home}>
+            <Logo size={26} />
           </Link>
           <nav className="flex gap-4 text-sm">
             <Link href="/terms" className="text-ink-muted hover:text-ink">
