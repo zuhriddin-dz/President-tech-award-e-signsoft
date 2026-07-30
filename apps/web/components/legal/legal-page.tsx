@@ -81,7 +81,7 @@ export const PRIVACY: LegalSection[] = [
     heading: 'Your rights',
     body: [
       'You can ask for a copy of your data, ask us to correct it, or ask us to delete it. Where a document is evidence of a completed signature we may need to retain it, and we will tell you if that applies and why.',
-      'Contact: privacy@esignsoft.com',
+      'Contact: privacy@esignsoft.uz',
     ],
   },
 ];

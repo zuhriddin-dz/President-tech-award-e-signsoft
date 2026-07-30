@@ -75,8 +75,8 @@ export default function HelpPage() {
               <LifeBuoy key="i" className="h-5 w-5" />,
               'Still stuck',
               'Email us with the packet reference from its detail page and we can trace exactly what happened.',
-              'mailto:support@esignsoft.com',
-              'support@esignsoft.com',
+              'mailto:support@esignsoft.uz',
+              'support@esignsoft.uz',
             ],
           ] as const
         ).map(([icon, title, body, href, cta]) => (
