@@ -1,0 +1,43 @@
+# The build context is the repo root, so anything not needed to compile the
+# API is dead weight in the upload — and secrets must never enter an image
+# layer at all.
+node_modules
+**/node_modules
+
+# SECRETS. These are the real ones, not the examples.
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Build output — the image builds its own.
+dist
+**/dist
+.next
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
+.turbo
+**/.turbo
+
+# The web and sign apps deploy to Vercel, not into this image — but pnpm still
+# needs their manifests present to resolve the workspace against the lockfile,
+# so the source is excluded and the package.json is kept.
+apps/web/*
+!apps/web/package.json
+apps/sign/*
+!apps/sign/package.json
+
+.git
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*
+coverage
+**/coverage
+docker-compose.yml
+Dockerfile
+.dockerignore
+README.md
+**/*.md

@@ -1,0 +1,176 @@
+# DigitalOcean App Platform spec for E-SIGNSOFT's server side.
+#
+# WHAT LIVES HERE AND WHY
+#   api     — the NestJS HTTP service.
+#   worker  — the BullMQ consumer. It is a SEPARATE service, not a second
+#             process in the API container, because it is a long-lived
+#             consumer with interval sweeps: it must not be scaled, restarted
+#             or health-checked on the API's terms.
+#
+# The two Next.js apps (web, sign) deploy to Vercel — see DEPLOY.md.
+#
+# Apply with:
+#   doctl apps create --spec .do/app.yaml
+#   doctl apps update <APP_ID> --spec .do/app.yaml
+#
+# Every `type: SECRET` value below is a placeholder. Set the real ones in the
+# App Platform UI or with `doctl apps update`; never commit them.
+name: esignsoft
+region: fra
+
+services:
+  # ── API ───────────────────────────────────────────────────────────────────
+  - name: api
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: REPLACE_ME/esignsoft
+      branch: main
+      deploy_on_push: true
+
+    instance_size_slug: apps-s-1vcpu-1gb
+    instance_count: 1
+    http_port: 5100
+
+    # App Platform routes the public domain here. The Next apps on Vercel call
+    # this origin server-side; the browser never does.
+    routes:
+      - path: /
+
+    # /health is unauthenticated by design (see health.controller.ts) so the
+    # platform can probe it without a credential.
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 20
+      period_seconds: 10
+      failure_threshold: 3
+
+    envs:
+      - key: NODE_ENV
+        value: production
+      # Neon POOLED host, as the docflow_app role — never neondb_owner, which
+      # has BYPASSRLS and would walk through every tenant isolation policy.
+      - key: APP_DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: CLERK_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_BUCKET
+        scope: RUN_TIME
+        value: data-flow
+      - key: S3_ACCESS_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      # rediss:// — TLS. See DEPLOY.md for the managed-Redis options.
+      - key: REDIS_URL
+        scope: RUN_TIME
+        type: SECRET
+      # The Ed25519 seal ring. Losing this means every previously issued
+      # Certificate of Completion becomes unverifiable — back it up somewhere
+      # that is not this platform.
+      - key: ESIGN_SEAL_KEYS
+        scope: RUN_TIME
+        type: SECRET
+      - key: RESEND_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: EMAIL_FROM
+        scope: RUN_TIME
+        value: E-SIGNSOFT <no-reply@esignsoft.uz>
+      # The base of every signing link that goes out by email. If this is
+      # wrong, every invite is dead on arrival.
+      - key: SIGN_APP_URL
+        scope: RUN_TIME
+        value: https://sign.esignsoft.uz
+      - key: ESIGN_LINK_TTL_DAYS
+        scope: RUN_TIME
+        value: "14"
+      - key: REMINDER_AFTER_DAYS
+        scope: RUN_TIME
+        value: "3"
+      - key: REMINDER_MAX
+        scope: RUN_TIME
+        value: "3"
+      # Shared with the sign app's relay. Must be identical in both places.
+      - key: SIGN_RELAY_SECRET
+        scope: RUN_TIME
+        type: SECRET
+
+  # ── Worker ────────────────────────────────────────────────────────────────
+  # Same image, different command. It has no http_port and no routes: it is
+  # not reachable from the internet and does not want to be.
+  - name: worker
+    dockerfile_path: Dockerfile
+    source_dir: /
+    github:
+      repo: REPLACE_ME/esignsoft
+      branch: main
+      deploy_on_push: true
+
+    run_command: node dist/worker.js
+    instance_size_slug: apps-s-1vcpu-1gb
+    # ONE instance. The reconciliation and expiry sweeps are interval-driven;
+    # the job processors are idempotent, but running several sweepers is
+    # wasted duplicate work with no upside at this volume.
+    instance_count: 1
+
+    envs:
+      - key: NODE_ENV
+        value: production
+      - key: APP_DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: CLERK_SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ENDPOINT
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_BUCKET
+        scope: RUN_TIME
+        value: data-flow
+      - key: S3_ACCESS_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: REDIS_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: ESIGN_SEAL_KEYS
+        scope: RUN_TIME
+        type: SECRET
+      - key: RESEND_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: EMAIL_FROM
+        scope: RUN_TIME
+        value: E-SIGNSOFT <no-reply@esignsoft.uz>
+      - key: SIGN_APP_URL
+        scope: RUN_TIME
+        value: https://sign.esignsoft.uz
+      - key: ESIGN_LINK_TTL_DAYS
+        scope: RUN_TIME
+        value: "14"
+      - key: REMINDER_AFTER_DAYS
+        scope: RUN_TIME
+        value: "3"
+      - key: REMINDER_MAX
+        scope: RUN_TIME
+        value: "3"
+      - key: SIGN_RELAY_SECRET
+        scope: RUN_TIME
+        type: SECRET
+
+# The API's public hostname. The Vercel apps reach it as API_ORIGIN.
+domains:
+  - domain: api.esignsoft.uz
+    type: PRIMARY
