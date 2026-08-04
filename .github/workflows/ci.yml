@@ -20,7 +20,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6390/0
       ESIGN_SEAL_KEYS: '[{"kid":"ci-seal","privateKeyPkcs8Pem":"-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIIhGPuLP7SanD5fScAHdBqw3RX9ZZU5XxkV7jMvqPJP5\n-----END PRIVATE KEY-----\n","state":"active"}]'
       RESEND_API_KEY: re_ci_dummy
-      EMAIL_FROM: DocFlow <onboarding@resend.dev>
+      EMAIL_FROM: E-SIGNSOFT <onboarding@resend.dev>
       SIGN_APP_URL: http://localhost:3300
       ESIGN_LINK_TTL_DAYS: '14'
       SIGN_RELAY_SECRET: ci_dummy_relay_secret_at_least_32_bytes_long

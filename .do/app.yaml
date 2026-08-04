@@ -24,7 +24,7 @@ services:
     dockerfile_path: Dockerfile
     source_dir: /
     github:
-      repo: REPLACE_ME/esignsoft
+      repo: zuhriddin-dz/esignsoft
       branch: main
       deploy_on_push: true
 
@@ -110,7 +110,7 @@ services:
     dockerfile_path: Dockerfile
     source_dir: /
     github:
-      repo: REPLACE_ME/esignsoft
+      repo: zuhriddin-dz/esignsoft
       branch: main
       deploy_on_push: true
 
