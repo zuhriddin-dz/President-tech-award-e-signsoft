@@ -40,6 +40,27 @@ const MARGIN = 56;
 const PAGE_W = 595.28; // A4 portrait, points
 const PAGE_H = 841.89;
 
+/**
+ * The E-SIGNSOFT mark, as path data. Duplicated from
+ * apps/web/components/brand/logo.tsx because this package cannot import from
+ * an app — if the shapes change there, change them here too.
+ *
+ * The mark has its own FIXED three-colour identity and deliberately does not
+ * follow the app's sky-blue UI palette.
+ */
+const LOGO_SRC_W = 360;
+const LOGO_SRC_H = 330;
+const LOGO_SHIELD_PATH =
+  'M120 22 L240 0 L360 22 V140 C360 185 316 216 240 240 C164 216 120 185 120 140 Z';
+const LOGO_DOCUMENT_PATH =
+  'M22 90 H168 L240 162 V308 Q240 330 218 330 H22 Q0 330 0 308 V112 Q0 90 22 90 Z';
+/** The exact intersection of shield and document, painted last. */
+const LOGO_SEAM_PATH = 'M120 90 H168 L240 162 V240 C164 216 120 185 120 140 V90 Z';
+
+const LOGO_PINK = rgb(0.831, 0.09, 0.416); // #D4176A — shield (protection)
+const LOGO_NAVY = rgb(0.086, 0.126, 0.263); // #162043 — document
+const LOGO_BLACK = rgb(0, 0, 0); // #000000 — seam
+
 function fmt(d: Date | null): string {
   // An Invalid Date is truthy but d.toISOString() throws RangeError — and a
   // throw on the signing path wedges the token this whole module guards. Treat
@@ -64,7 +85,6 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
   const ink = rgb(0.039, 0.114, 0.18); // --color-ink #0a1d2e
   const muted = rgb(0.353, 0.42, 0.478); // --color-ink-muted #5a6b7a
   const rule = rgb(0.867, 0.89, 0.914); // --color-border #dde3e9
-  const brand = rgb(0, 0.467, 0.784); // --color-brand #0077c8
 
   let y = PAGE_H - MARGIN;
 
@@ -102,27 +122,31 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
     y -= 16;
   };
 
-  // The mark, drawn from primitives — the same page-and-seal geometry as
-  // apps/web/components/brand/logo.tsx, at 26pt. pdf-lib has no SVG importer,
-  // so two shapes is not a stylistic preference here, it is what makes the
-  // logo reproducible on a legal artifact at all.
-  const MARK = 26;
-  const markTop = y + 4;
-  page.drawRectangle({
-    x: MARGIN,
-    y: markTop - MARK * 0.78,
-    width: MARK * 0.5,
-    height: MARK * 0.78,
-    color: brand,
+  // The mark, drawn from the SAME path data as the web component — pdf-lib's
+  // drawSvgPath takes raw SVG path strings and flips the Y axis itself, so
+  // the shield's curves and the document's corner fold reproduce exactly
+  // rather than being approximated with rectangles.
+  //
+  // Paint order IS the design: shield, then document over it, then the seam
+  // (their exact intersection) last. See apps/web/components/brand/logo.tsx.
+  const MARK_H = 26;
+  const markScale = MARK_H / LOGO_SRC_H;
+  // drawSvgPath places the path's own (0,0) at {x,y}; the mark's origin is
+  // its top-left, so y is the mark's TOP edge.
+  const markTop = y + 9;
+  for (const [d, color] of [
+    [LOGO_SHIELD_PATH, LOGO_PINK],
+    [LOGO_DOCUMENT_PATH, LOGO_NAVY],
+    [LOGO_SEAM_PATH, LOGO_BLACK],
+  ] as const) {
+    page.drawSvgPath(d, { x: MARGIN, y: markTop, scale: markScale, color });
+  }
+  text('E-SIGNSOFT', {
+    size: 13,
+    bold: true,
+    x: MARGIN + MARK_H * (LOGO_SRC_W / LOGO_SRC_H) + 10,
   });
-  page.drawCircle({
-    x: MARGIN + MARK * 0.66,
-    y: markTop - MARK * 0.72,
-    size: MARK * 0.24,
-    color: ink,
-  });
-  text('E-SIGNSOFT', { size: 13, bold: true, x: MARGIN + MARK + 8 });
-  y -= 30;
+  y -= 32;
 
   text('Certificate of Completion', { size: 18, bold: true });
   y -= 22;
