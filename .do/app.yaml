@@ -24,7 +24,7 @@ services:
     dockerfile_path: Dockerfile
     source_dir: /
     github:
-      repo: zuhriddin-dz/esignsoft
+      repo: zuhriddin-dz/President-tech-award-e-signsoft
       branch: main
       deploy_on_push: true
 
@@ -110,7 +110,7 @@ services:
     dockerfile_path: Dockerfile
     source_dir: /
     github:
-      repo: zuhriddin-dz/esignsoft
+      repo: zuhriddin-dz/President-tech-award-e-signsoft
       branch: main
       deploy_on_push: true
 
