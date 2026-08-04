@@ -1,4 +1,4 @@
-# Local dev dependencies for DocFlow. Postgres is Neon (cloud) and storage is
+# Local dev dependencies for E-SIGNSOFT. Postgres is Neon (cloud) and storage is
 # R2 (cloud), so the only thing to run locally is Redis — the BullMQ backend.
 #
 #   docker compose up -d      # start

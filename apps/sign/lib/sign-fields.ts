@@ -3,7 +3,7 @@ import type { SignerView, TemplateField } from '@docflow/contracts';
 /**
  * What each of the 12 field types means to the SIGNER — which they must act on,
  * which auto-fill, which are optional inputs. Pure functions so the completion
- * rule is testable directly. Adapted from tms to DocFlow's snake_case types.
+ * rule is testable directly.
  */
 const SIGNATURE_KINDS = new Set(['signature', 'initial', 'stamp']);
 const AUTO_KINDS = new Set(['date', 'name', 'first_name', 'last_name', 'email']);
@@ -41,7 +41,7 @@ export function fieldLabel(field: TemplateField): string {
   return field.label?.trim() || named[field.type] || 'Field';
 }
 
-/** Stable per-field handle (fields always have an id in DocFlow). */
+/** Stable per-field handle (fields always have an id in E-SIGNSOFT). */
 export function fieldKey(field: TemplateField, index: number): string {
   return field.id ?? `${field.type}-${field.page}-${index}`;
 }

@@ -1,4 +1,4 @@
-// DocFlow — ONE shared-schema database for all tenants.
+// E-SIGNSOFT — ONE shared-schema database for all tenants.
 // Every tenant-owned table carries tenant_id and an RLS policy (added in
 // migration SQL — Prisma can't express RLS, so policies live in migrations
 // and rls.spec.ts proves them against the real server).

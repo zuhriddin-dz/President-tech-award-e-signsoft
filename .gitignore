@@ -13,3 +13,8 @@ generated/
 .env
 .env.*
 !.env.example
+
+# Local tooling and internal planning notes — not part of the product.
+CLAUDE.md
+.claude/
+docflow-saas-design.md

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// security-lint — the CI gate for DocFlow's multi-tenancy model.
+// security-lint — the CI gate for E-SIGNSOFT's multi-tenancy model.
 //
-// DocFlow is ONE shared-schema Postgres with Row-Level Security. Tenant
+// E-SIGNSOFT is ONE shared-schema Postgres with Row-Level Security. Tenant
 // identity is set per request from the VERIFIED SESSION by exactly one
 // sanctioned area (apps/api/src/tenant/) and rides in request context —
 // never in client-controlled data, never as a function parameter, and the
