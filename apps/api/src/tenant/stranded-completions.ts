@@ -24,7 +24,12 @@ export async function findStrandedCompletions(limit = 25): Promise<StrandedCompl
   // so this uses the same client but an explicitly cross-tenant query with no
   // RLS context set. RLS still applies — which is why the query runs through a
   // SECURITY DEFINER function rather than a bare SELECT.
+  //
+  // ::int is required: Prisma sends a JS number as int8 and Postgres will not
+  // implicitly downcast it to the int4 the function declares, failing with
+  // 42883 ("function does not exist") — which looks like a missing migration
+  // rather than a type mismatch.
   const rows = await workerPrisma().$queryRaw<{ request_id: string; tenant_id: string }[]>`
-    SELECT request_id, tenant_id FROM public.find_stranded_completions(${limit})`;
+    SELECT request_id, tenant_id FROM public.find_stranded_completions(${limit}::int)`;
   return rows.map((r) => ({ requestId: r.request_id, tenant: r.tenant_id }));
 }
