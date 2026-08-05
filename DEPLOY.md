@@ -10,7 +10,8 @@ Four runtime pieces, split across two platforms:
 | worker — BullMQ consumer | **DigitalOcean** App Platform | See below |
 
 Already managed elsewhere: **Neon** (Postgres), **Cloudflare R2** (documents),
-**Clerk** (identity), **Resend** (email). Only Redis has to be added.
+**Clerk** (identity), **Resend** (email). Only **Upstash** (Redis, for the job
+queue) has to be added.
 
 ### Why the worker cannot go on Vercel
 
@@ -29,18 +30,38 @@ Do these in order. Steps 3 and 4 depend on knowing the hostnames from 2 and 5,
 which is circular — resolve it by setting placeholder values first and
 correcting them at step 6.
 
-### 1. Redis
+### 1. Redis — Upstash
 
-App Platform's own managed Redis (Valkey) keeps traffic inside DigitalOcean's
-network. Upstash also works and has a free tier.
+Redis is not a data store here. It is the BullMQ backend, and the only thing
+in it is job records. Two kinds of work go through it: sending an envelope
+(invite emails) and completing one (stamp → hash → seal → certificate → R2 →
+email). Both are too slow and too failure-prone to run inside the HTTP request
+that triggers them, and both must survive a retry — the signature is already
+committed by the time they run, so they cannot simply be abandoned.
 
-Either way you need a `rediss://` URL (TLS). The app's producer connection is
-already configured to fail fast rather than hang if Redis is unreachable.
+Use **Upstash**. Create a database at console.upstash.com and copy the
+`rediss://` URL from the **Redis** tab (not the REST URL — BullMQ speaks the
+Redis protocol, not HTTP).
+
+- Free tier covers 10k commands/day. An envelope costs a handful, so early
+  traffic runs at zero cost.
+- Serverless, so there is no instance to size, patch, or pin to a region.
+- Per-request pricing after the free tier, rather than ~$15/month for an
+  always-on instance.
+
+DigitalOcean's managed Valkey is the alternative if you want everything on one
+provider and inside their private network. It costs more and adds a
+provisioning step; nothing in the app depends on the choice.
+
+`REDIS_URL` accepts `redis://` or `rediss://`. Use the TLS form in production.
+The producer connection fails fast rather than hanging if Redis is
+unreachable, so an outage surfaces as a failed send in 8 seconds — never a
+stuck request.
 
 ### 2. API + worker → DigitalOcean
 
-The spec is committed at [`.do/app.yaml`](.do/app.yaml). Edit the two
-`github.repo` fields to your repository, then:
+The spec is committed at [`.do/app.yaml`](.do/app.yaml) and already points at
+this repository in both service blocks. Then:
 
 ```bash
 doctl apps create --spec .do/app.yaml
@@ -118,7 +139,7 @@ Redeploy all four.
 | `APP_DATABASE_URL` | Neon **pooled** host, role `docflow_app`. **Never `neondb_owner`** — it has `BYPASSRLS` and walks through every tenant isolation policy. |
 | `CLERK_SECRET_KEY` | Production instance (`sk_live_…`). |
 | `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` | R2. Token scoped to the one bucket. |
-| `REDIS_URL` | `rediss://` from step 1. |
+| `REDIS_URL` | Upstash `rediss://` from step 1 — the Redis-protocol URL, not the REST one. |
 | `ESIGN_SEAL_KEYS` | Ed25519 seal ring JSON. **Back this up off-platform** — see the warning below. |
 | `RESEND_API_KEY` | |
 | `EMAIL_FROM` | Must be a verified domain — see below. |
