@@ -19,5 +19,17 @@ export default clerkMiddleware(async (auth, req) => {
 });
 
 export const config = {
-  matcher: ['/((?!_next|.*\\.(?:ico|png|svg|jpg|jpeg|webp|css|js|map|txt|xml|webmanifest)$).*)'],
+  matcher: [
+    // Clerk serves clerk-js and its UI bundle FIRST-PARTY from /__clerk/* once
+    // the instance is on a production custom domain — clerkMiddleware is what
+    // answers those requests. They end in .js, so the static-asset exclusion
+    // below skips them and Next returns 404: clerk-js never loads and every
+    // <SignIn/> renders as an empty page. Listed first, and deliberately not
+    // subject to that exclusion.
+    //
+    // Only reproducible in production: a pk_test_ instance loads clerk-js from
+    // Clerk's own domain and never touches this path.
+    '/__clerk/(.*)',
+    '/((?!_next|.*\\.(?:ico|png|svg|jpg|jpeg|webp|css|js|map|txt|xml|webmanifest)$).*)',
+  ],
 };
