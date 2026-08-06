@@ -39,8 +39,11 @@ export async function completeSignature(tenant: string, requestId: string): Prom
   // failure report success while nobody ever receives their document.
   if (req.signedPdfKey && req.completionEmailedAt) return;
   if (req.status !== 'completed') throw new Error(`completion: request ${requestId} is not signed`);
-  if (!req.signatureImageKey || !req.completedAt) {
-    throw new Error(`completion: request ${requestId} has no signature`);
+  // The seal binds to this instant, so there is nothing to sign over without it.
+  // Whether a SIGNATURE exists cannot be decided yet: since routing it lives on
+  // the recipients rows, which are not loaded until the stamping step below.
+  if (!req.completedAt) {
+    throw new Error(`completion: request ${requestId} has no completion time`);
   }
 
   // Already sealed but not yet delivered (a previous run died at the mail
@@ -72,6 +75,14 @@ export async function completeSignature(tenant: string, requestId: string): Prom
   const signedSigners = recipients.filter(
     (r) => r.role === 'signer' && r.status === 'completed' && r.signatureImageKey,
   );
+  // A signature lives in ONE of two places: the recipients rows (every envelope
+  // since routing) or the legacy request column (older single-signer rows).
+  // Checked here, once both are in hand — asserting the legacy column earlier
+  // stranded every new envelope: signed and completed, but never sealed,
+  // because the only copy of the signature was somewhere the guard never read.
+  if (signedSigners.length === 0 && !req.signatureImageKey) {
+    throw new Error(`completion: request ${requestId} has no signature`);
+  }
   // Legacy envelopes (pre-routing) carry their signature on the request row.
   const passes: { fields: TemplateField[]; values: Record<string, string>; imageKey: string }[] =
     signedSigners.length > 0
@@ -84,7 +95,7 @@ export async function completeSignature(tenant: string, requestId: string): Prom
           {
             fields: allFields,
             values: (req.fieldValues ?? {}) as Record<string, string>,
-            imageKey: req.signatureImageKey,
+            imageKey: req.signatureImageKey!,
           },
         ];
 
