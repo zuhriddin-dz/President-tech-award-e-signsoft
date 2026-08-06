@@ -92,6 +92,8 @@ export function TemplateEditor({ template }: { template: Template }) {
   const past = useRef<EditorField[][]>([]);
   const future = useRef<EditorField[][]>([]);
   const clipboard = useRef<EditorField | null>(null);
+  /** Why the last save failed, so send() can say more than "it failed". */
+  const saveError = useRef<string | null>(null);
   // Refs don't re-render, but the toolbar's disabled states depend on them.
   const [, bumpHistory] = useState(0);
   const touchHistory = () => bumpHistory((t) => t + 1);
@@ -246,6 +248,7 @@ export function TemplateEditor({ template }: { template: Template }) {
   /** Persist the layout. Send always saves first — the server snapshots it. */
   async function save(): Promise<boolean> {
     setSaveState('saving');
+    saveError.current = null;
     try {
       await updateTemplate(template.id, {
         name: name.trim() || 'Untitled',
@@ -265,14 +268,24 @@ export function TemplateEditor({ template }: { template: Template }) {
       setSaveState('saved');
       setTimeout(() => setSaveState('idle'), 1600);
       return true;
-    } catch {
+    } catch (err) {
+      // Keep WHY. Swallowing it here left the sender — and anyone debugging —
+      // with "Could not save the field layout" and nothing else, which is the
+      // same for a rejected field, an expired session and a broken gateway.
+      saveError.current = err instanceof Error ? err.message : String(err);
       setSaveState('error');
       return false;
     }
   }
 
   async function send(): Promise<void> {
-    if (!(await save())) throw new Error('Could not save the field layout.');
+    if (!(await save())) {
+      throw new Error(
+        saveError.current
+          ? `Could not save the field layout — ${saveError.current}`
+          : 'Could not save the field layout.',
+      );
+    }
     await sendSignatureRequest({
       templateId: template.id,
       routingMode,
