@@ -1,3 +1,5 @@
+import { Mark } from '@/components/brand/logo';
+
 /**
  * The signing app's 404 — and the only page a failed signing link ever
  * reaches, whatever went wrong.
@@ -14,15 +16,20 @@
  * the same for all of them anyway: go back to the newest email, or ask the
  * sender. Nothing here is a dead end for a legitimate signer.
  *
- * No link back to the product either. This app is credential-poor by design
- * and reached by strangers; it should not become a navigation surface.
+ * The mark is shown but is NOT a link. A recipient who lands here should
+ * recognise who sent them; this app is credential-poor and reached by
+ * strangers, so it should not also become a way into the product.
+ *
+ * Mark only, no wordmark: the root layout already prints E-SIGNSOFT in the
+ * header on every page of this app, and repeating it directly underneath
+ * reads as a rendering fault on the one page whose job is to look deliberate.
  */
 export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-[70vh] w-full max-w-lg flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight text-ink">
-        This link isn&apos;t available
-      </h1>
+      <Mark size={56} />
+
+      <h1 className="mt-2 text-lg font-semibold text-ink">This link isn&apos;t available</h1>
       <p className="text-ink-muted">
         Signing links are single-use and time-limited, and a new one replaces the last. Please open
         the most recent email you received.
