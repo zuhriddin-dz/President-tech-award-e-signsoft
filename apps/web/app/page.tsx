@@ -16,6 +16,20 @@ import {
 import { Button } from '@/components/ui/primitives';
 
 /**
+ * The call-to-action fill. brand-link rather than brand: at CTA size the label
+ * matters more than the hue, and 6.47:1 beats brand's 4.70:1.
+ */
+const CTA = 'bg-brand-link hover:bg-brand-hover';
+
+/**
+ * The same fill ON the hero panel, which is nearly as dark as the button.
+ * brand-link measures 2.22:1 there — under the 3:1 a control needs to read as
+ * a shape — so the edge carries that instead: hero-glow is 8.62:1 against the
+ * panel and 3.88:1 against the fill, which is what keeps the button a button.
+ */
+const CTA_ON_HERO = `${CTA} ring-1 ring-hero-glow`;
+
+/**
  * Public landing page — the first thing a logged-out visitor sees. It explains
  * the problem we solve, how the signing is secure, how documents are managed
  * end to end, and why to choose E-SIGNSOFT over paperwork. The CTA leads into the
@@ -49,7 +63,7 @@ export default async function LandingPage() {
           <div className="ml-auto flex items-center gap-3">
             {userId ? (
               <Link href="/home">
-                <Button variant="primary">Go to E-SIGNSOFT</Button>
+                <Button variant="primary" className={CTA}>Go to E-SIGNSOFT</Button>
               </Link>
             ) : (
               <>
@@ -57,7 +71,7 @@ export default async function LandingPage() {
                   Sign in
                 </Link>
                 <Link href="/sign-up">
-                  <Button variant="primary">Get started free</Button>
+                  <Button variant="primary" className={CTA}>Get started free</Button>
                 </Link>
               </>
             )}
@@ -81,14 +95,14 @@ export default async function LandingPage() {
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             {userId ? (
               <Link href="/home">
-                <Button variant="primary" size="lg">
+                <Button variant="primary" size="lg" className={CTA_ON_HERO}>
                   Go to your dashboard
                 </Button>
               </Link>
             ) : (
               <>
                 <Link href="/sign-up">
-                  <Button variant="primary" size="lg">
+                  <Button variant="primary" size="lg" className={CTA_ON_HERO}>
                     Get started free
                     <ArrowRight className="h-4 w-4" />
                   </Button>
@@ -275,7 +289,7 @@ export default async function LandingPage() {
         {!userId && (
           <div className="mt-8 flex items-center justify-center gap-3">
             <Link href="/sign-up">
-              <Button variant="primary" size="lg">
+              <Button variant="primary" size="lg" className={CTA}>
                 Get started free
                 <ArrowRight className="h-4 w-4" />
               </Button>

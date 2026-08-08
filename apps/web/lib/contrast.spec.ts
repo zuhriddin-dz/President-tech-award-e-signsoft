@@ -55,14 +55,19 @@ describe('brand palette contrast', () => {
   });
 
   /**
-   * The primary button sits ON the hero gradient. If the gradient is ever
-   * lightened back toward the brand colour, that button stops reading as a
-   * shape — it dissolves into its own background. The failure is invisible in
-   * code review and obvious only to whoever cannot find the button, so it is
-   * checked along the whole gradient rather than at the ends.
+   * The CTA sits ON the hero gradient, and its fill (brand-link) is nearly as
+   * dark as the panel — 2.22:1, well under the 3:1 a control needs. What keeps
+   * it a distinguishable shape is its hero-glow EDGE, so that is what has to
+   * hold: bright enough against the panel behind it, and against the fill it
+   * encloses. Sampled along the gradient, not just at its ends, because a
+   * gradient can pass at both stops and fail in the middle.
+   *
+   * A button dissolving into its background is invisible in code review and
+   * obvious only to whoever cannot find it.
    */
-  it('keeps the primary button visible against every point of the hero gradient', () => {
-    const brand = WEB['--color-brand']!;
+  it('keeps the hero CTA a distinguishable shape via its edge', () => {
+    const edge = WEB['--color-hero-glow']!;
+    const fill = WEB['--color-brand-link']!;
     const from = WEB['--color-hero-from']!;
     const to = WEB['--color-hero-to']!;
     const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
@@ -73,12 +78,22 @@ describe('brand palette contrast', () => {
         .join('')}`;
 
     for (const t of [0, 0.25, 0.5, 0.75, 1]) {
-      const ratio = contrastRatio(brand, at(t));
+      const ratio = contrastRatio(edge, at(t));
       expect(
         ratio,
-        `brand button on hero at ${Math.round(t * 100)}% (${at(t)}) = ${ratio.toFixed(2)}:1`,
+        `CTA edge on hero at ${Math.round(t * 100)}% (${at(t)}) = ${ratio.toFixed(2)}:1`,
       ).toBeGreaterThanOrEqual(AA_UI);
     }
+
+    // The edge must also separate from the fill, or it reads as one dark blob.
+    const againstFill = contrastRatio(edge, fill);
+    expect(againstFill, `CTA edge vs its own fill = ${againstFill.toFixed(2)}:1`).toBeGreaterThanOrEqual(
+      AA_UI,
+    );
+
+    // And the label still has to be legible on the darker fill.
+    const label = contrastRatio(WEB['--color-brand-ink']!, fill);
+    expect(label, `CTA label on brand-link = ${label.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXT);
   });
 
   it('keeps body text legible on both tinted row backgrounds', () => {

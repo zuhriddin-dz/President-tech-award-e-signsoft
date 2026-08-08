@@ -16,9 +16,14 @@
      primary button label in the product. */
   --color-brand: #0077c8;
   --color-brand-hover: #005a99;
-  /* Links under 14px, and ANY link sitting on a tinted row. Plain brand on
-     brand-soft is only 4.20:1; this is 5.79:1 there and 6.47:1 on white. A
-     token beats a rule nobody remembers at review time. */
+  /* The darker brand. Two jobs, same reason — plain brand is not quite dark
+     enough where it matters:
+       - links under 14px, and ANY link on a tinted row. Brand on brand-soft is
+         only 4.20:1; this is 5.79:1 there and 6.47:1 on white.
+       - the landing page's large CTA fills, where 6.47:1 for the label beats
+         brand's 4.70:1 at a size that carries the whole page.
+     On the hero it is only 2.22:1 against the panel, so a button using it
+     THERE must carry a hero-glow edge to remain a distinguishable shape. */
   --color-brand-link: #00629f;
   --color-brand-ink: #ffffff;
   /* Hover tint. Only 1.12:1 against white, so it can never be the SOLE
