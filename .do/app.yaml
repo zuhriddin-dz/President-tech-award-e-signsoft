@@ -84,6 +84,11 @@ services:
       - key: EMAIL_FROM
         scope: RUN_TIME
         value: E-SIGNSOFT <no-reply@esignsoft.uz>
+      # Where operational alerts go. Optional: unset means alerts are logged
+      # and not sent, so monitoring can never be why a deploy fails to boot.
+      - key: ALERT_EMAIL
+        scope: RUN_TIME
+        value: ""
       # The base of every signing link that goes out by email. If this is
       # wrong, every invite is dead on arrival.
       - key: SIGN_APP_URL
@@ -154,6 +159,11 @@ services:
       - key: EMAIL_FROM
         scope: RUN_TIME
         value: E-SIGNSOFT <no-reply@esignsoft.uz>
+      # Where operational alerts go. Optional: unset means alerts are logged
+      # and not sent, so monitoring can never be why a deploy fails to boot.
+      - key: ALERT_EMAIL
+        scope: RUN_TIME
+        value: ""
       - key: SIGN_APP_URL
         scope: RUN_TIME
         value: https://sign.esignsoft.uz

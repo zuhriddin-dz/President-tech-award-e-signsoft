@@ -32,6 +32,10 @@ const envSchema = z.object({
   // Transactional email (Resend now; SES later behind the same interface).
   RESEND_API_KEY: z.string().min(1),
   EMAIL_FROM: z.string().min(3),
+  // Where operational alerts go — a stuck completion, a sweep that keeps
+  // failing. OPTIONAL on purpose: monitoring must not become the reason a
+  // deploy will not boot. Unset means alerts are logged and not sent.
+  ALERT_EMAIL: z.email().optional(),
   // Public signing app origin — the base of every invite link.
   SIGN_APP_URL: z.url(),
   // Signing-link lifetime in days.

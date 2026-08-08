@@ -7,6 +7,8 @@ import { processors } from './queue/processors.js';
 import { completeSignature } from './modules/signing/completion.js';
 import { findStrandedCompletions } from './tenant/stranded-completions.js';
 import { sweepExpiredEnvelopes, sweepReminders } from './modules/signature-requests/lifecycle.js';
+import { Alerter, FailureStreak } from './ops/alerts.js';
+import { ResendSender } from './email/resend.sender.js';
 
 /**
  * The worker process — same codebase as the API, second entrypoint, scaled
@@ -41,6 +43,18 @@ worker.on('failed', (job, err) => {
  * makes "the signature is never lost" true rather than aspirational.
  */
 const RECONCILE_INTERVAL_MS = 60_000;
+
+/**
+ * Alert after five consecutive failures — about five minutes at this interval.
+ * Long enough that a redeploy, a database failover or a momentary R2 blip
+ * resolves itself in silence; short enough that a real fault is known about
+ * while it is still a handful of documents rather than a day of them.
+ */
+const ALERT_AFTER_FAILURES = 5;
+const alerter = new Alerter(new ResendSender(), env.ALERT_EMAIL ?? null, logger);
+const sealingFailures = new FailureStreak(ALERT_AFTER_FAILURES);
+const sweepFailures = new FailureStreak(ALERT_AFTER_FAILURES);
+
 async function reconcile(): Promise<void> {
   try {
     const stranded = await findStrandedCompletions();
@@ -48,15 +62,54 @@ async function reconcile(): Promise<void> {
       logger.warn({ requestId: s.requestId }, 'reconciling stranded completion');
       try {
         await completeSignature(s.tenant, s.requestId);
+        sealingFailures.succeed(s.requestId);
+        alerter.clear(`seal:${s.requestId}`);
       } catch (err) {
+        const message = (err as Error).message;
         logger.error(
-          { requestId: s.requestId, err: (err as Error).message },
+          { requestId: s.requestId, err: message },
           'reconcile attempt failed (will retry next sweep)',
         );
+        // A signature that cannot be sealed is the one failure nobody notices:
+        // the signer saw success, the evidence is safe, and only the delivery
+        // is missing. It stays wrong until somebody is told.
+        if (sealingFailures.fail(s.requestId)) {
+          await alerter.raise(
+            `seal:${s.requestId}`,
+            'A signed document cannot be sealed',
+            [
+              `Request ${s.requestId} has failed to complete ${ALERT_AFTER_FAILURES} times.`,
+              '',
+              `Error: ${message}`,
+              '',
+              'The signature itself is committed and safe — sealing and delivery',
+              'are what is stuck. The sweep keeps retrying, so fixing the cause',
+              'is enough; nobody has to sign anything again.',
+            ].join('\n'),
+          );
+        }
       }
     }
+    sweepFailures.succeed('reconcile');
   } catch (err) {
-    logger.error({ err: (err as Error).message }, 'reconcile sweep failed');
+    const message = (err as Error).message;
+    logger.error({ err: message }, 'reconcile sweep failed');
+    // The sweep itself failing means the safety net is down — usually the
+    // database being unreachable, which no individual request will report.
+    if (sweepFailures.fail('reconcile')) {
+      await alerter.raise(
+        'sweep:reconcile',
+        'The reconcile sweep is failing',
+        [
+          `The reconcile sweep has failed ${ALERT_AFTER_FAILURES} times running.`,
+          '',
+          `Error: ${message}`,
+          '',
+          'While it is down, a signature that completes without its follow-up',
+          'job will not be picked up. Nothing is lost; delivery stops.',
+        ].join('\n'),
+      );
+    }
   }
 
   // The envelope lifecycle: nudge the stalled, retire the lapsed. Both are

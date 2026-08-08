@@ -143,6 +143,7 @@ Redeploy all four.
 | `ESIGN_SEAL_KEYS` | Ed25519 seal ring JSON. **Back this up off-platform** — see the warning below. |
 | `RESEND_API_KEY` | |
 | `EMAIL_FROM` | Must be a verified domain — see below. |
+| `ALERT_EMAIL` | Where operational alerts go — a stuck completion, a failing sweep. Optional, but leaving it blank means nothing tells you when sealing breaks. |
 | `SIGN_APP_URL` | Base of every signing link. Wrong value = every invite dead on arrival. |
 | `SIGN_RELAY_SECRET` | ≥32 bytes. Must be **identical** to the sign app's copy. |
 | `ESIGN_LINK_TTL_DAYS`, `REMINDER_AFTER_DAYS`, `REMINDER_MAX` | Optional; sensible defaults in `env.ts`. |
@@ -235,3 +236,28 @@ against an un-migrated database fails at the first query, not at boot.
 mismatch makes every signing link return a uniform 404 — by design, the relay
 gives no hint about *why* a request failed, so this misconfiguration looks
 identical to an expired link.
+
+---
+
+## Monitoring
+
+Two halves, because they answer different questions.
+
+**Push — the worker emails `ALERT_EMAIL`.** A signed document that cannot be
+sealed is the failure nobody notices: the signer saw success, the evidence is
+safe, and only delivery is missing. The worker alerts after five consecutive
+failures on the same request (about five minutes), and again if the reconcile
+sweep itself keeps failing, which means the safety net is down.
+
+Alerts are deduplicated per fault with an hour's cooldown — a channel that
+floods gets muted, and a muted channel reads as coverage that does not exist.
+Sending can never break the sweep it runs inside.
+
+**Pull — `GET /health/ready`.** Point any uptime monitor at it. It reports
+`ok` or `degraded` plus per-subsystem state, and deliberately returns no error
+text, since the route is unauthenticated.
+
+Do NOT point App Platform's health probe at it. The platform's probe is
+`/health`, which touches nothing on purpose: wiring a database check into it
+would turn a thirty-second Neon blip into a restart loop, the platform killing
+a healthy API over a fault restarting cannot fix.
