@@ -54,6 +54,33 @@ describe('brand palette contrast', () => {
     }
   });
 
+  /**
+   * The primary button sits ON the hero gradient. If the gradient is ever
+   * lightened back toward the brand colour, that button stops reading as a
+   * shape — it dissolves into its own background. The failure is invisible in
+   * code review and obvious only to whoever cannot find the button, so it is
+   * checked along the whole gradient rather than at the ends.
+   */
+  it('keeps the primary button visible against every point of the hero gradient', () => {
+    const brand = WEB['--color-brand']!;
+    const from = WEB['--color-hero-from']!;
+    const to = WEB['--color-hero-to']!;
+    const channel = (hex: string, i: number) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+    const at = (t: number) =>
+      `#${[0, 1, 2]
+        .map((i) => Math.round(channel(from, i) + (channel(to, i) - channel(from, i)) * t))
+        .map((v) => v.toString(16).padStart(2, '0'))
+        .join('')}`;
+
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const ratio = contrastRatio(brand, at(t));
+      expect(
+        ratio,
+        `brand button on hero at ${Math.round(t * 100)}% (${at(t)}) = ${ratio.toFixed(2)}:1`,
+      ).toBeGreaterThanOrEqual(AA_UI);
+    }
+  });
+
   it('keeps body text legible on both tinted row backgrounds', () => {
     const ink = WEB['--color-ink']!;
     for (const tint of ['--color-brand-soft', '--color-brand-soft-strong']) {

@@ -30,10 +30,15 @@
   --color-brand-deep: #06304e;
   --color-brand-darkest: #04121f;
 
-  /* Hero gradient: sky descending into water. Both stops carry white text
-     (5.97:1 and 13.63:1), because large numerals sit on this panel. */
-  --color-hero-from: #00699e;
-  --color-hero-to: #06304e;
+  /* Hero gradient: deep water, not sky. Both stops carry white text (14.37:1
+     and 18.89:1), because large numerals sit on this panel.
+     The light stop is capped at #062c48 for a reason: the primary button on
+     this panel is --color-brand, and brand-on-hero must stay above 3:1 or the
+     control stops reading as a shape at all. At the previous #00699e that
+     measured 1.27:1 — a sky-blue button dissolving into a sky-blue panel,
+     worst exactly where the eye lands first. Lightening these undoes that. */
+  --color-hero-from: #062c48;
+  --color-hero-to: #04121f;
   /* Decorative ONLY — a low-opacity glow in the corner of the dark panel.
      1.67:1 against white: nothing legible may sit on top of it. */
   --color-hero-glow: #7dd3fc;

@@ -81,14 +81,14 @@ export default async function LandingPage() {
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             {userId ? (
               <Link href="/home">
-                <Button size="lg" className="bg-hero-glow text-brand-deep hover:bg-hero-glow/90">
+                <Button variant="primary" size="lg">
                   Go to your dashboard
                 </Button>
               </Link>
             ) : (
               <>
                 <Link href="/sign-up">
-                  <Button size="lg" className="bg-hero-glow text-brand-deep hover:bg-hero-glow/90">
+                  <Button variant="primary" size="lg">
                     Get started free
                     <ArrowRight className="h-4 w-4" />
                   </Button>
