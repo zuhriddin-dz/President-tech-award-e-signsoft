@@ -11,7 +11,12 @@ describe('MeResponseSchema', () => {
     const good = {
       userId: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',
       role: 'OWNER',
-      tenant: { id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f', name: 'Acme', kind: 'company' },
+      tenant: {
+        id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',
+        name: 'Acme',
+        kind: 'company',
+        createdAt: '2026-08-01T09:00:00.000Z',
+      },
     };
     expect(MeResponseSchema.parse(good).tenant?.kind).toBe('company');
     expect(() =>
@@ -48,8 +53,16 @@ describe('TemplateFieldSchema', () => {
     expect(() => TemplateFieldSchema.parse({ ...base, page: 0 })).toThrow();
   });
 
-  it('covers all 12 field types', () => {
-    expect(FieldTypeSchema.options).toHaveLength(12);
+  // The exact list, not a count. A count catches a deletion; the list also
+  // catches a RENAME — and these strings are a wire contract shared by the
+  // tagging editor, the PDF stamper and the signing app, so a quiet rename
+  // would strand fields that were already placed on live templates.
+  it('carries exactly the field types the editor and stamper agree on', () => {
+    expect(FieldTypeSchema.options).toEqual([
+      'signature', 'initial', 'stamp', 'date', 'name', 'first_name',
+      'last_name', 'email', 'company', 'title', 'text', 'number',
+      'phone', 'address', 'checkbox', 'dropdown', 'radio',
+    ]);
   });
 });
 

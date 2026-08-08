@@ -10,7 +10,12 @@ describe('@docflow/contracts', () => {
     const good = {
       userId: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',
       role: 'ADMIN',
-      tenant: { id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f', name: 'Acme', kind: 'company' },
+      tenant: {
+        id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',
+        name: 'Acme',
+        kind: 'company',
+        createdAt: '2026-08-01T09:00:00.000Z',
+      },
     };
     expect(MeResponseSchema.parse(good)).toEqual(good);
     // Extra keys are stripped — an over-sharing API response cannot reach the UI.

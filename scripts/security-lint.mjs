@@ -1,4 +1,8 @@
-#!/usr/bin/env node
+// No shebang. This module is imported by security-lint.spec.mjs, and Vite's
+// ESM transform rejects "#!" as an invalid token — which failed the whole
+// `vitest run --dir scripts` suite. Nothing needs it: both call sites in
+// package.json invoke `node scripts/security-lint.mjs` explicitly.
+//
 // security-lint — the CI gate for E-SIGNSOFT's multi-tenancy model.
 //
 // E-SIGNSOFT is ONE shared-schema Postgres with Row-Level Security. Tenant
