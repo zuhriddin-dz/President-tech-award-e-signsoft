@@ -49,7 +49,7 @@ export default async function LandingPage() {
           <div className="ml-auto flex items-center gap-3">
             {userId ? (
               <Link href="/home">
-                <Button variant="dark">Go to E-SIGNSOFT</Button>
+                <Button variant="primary">Go to E-SIGNSOFT</Button>
               </Link>
             ) : (
               <>
@@ -57,7 +57,7 @@ export default async function LandingPage() {
                   Sign in
                 </Link>
                 <Link href="/sign-up">
-                  <Button variant="dark">Get started free</Button>
+                  <Button variant="primary">Get started free</Button>
                 </Link>
               </>
             )}
@@ -275,7 +275,7 @@ export default async function LandingPage() {
         {!userId && (
           <div className="mt-8 flex items-center justify-center gap-3">
             <Link href="/sign-up">
-              <Button variant="dark" size="lg">
+              <Button variant="primary" size="lg">
                 Get started free
                 <ArrowRight className="h-4 w-4" />
               </Button>
