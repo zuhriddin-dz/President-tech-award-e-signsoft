@@ -20,7 +20,7 @@ import type { GetStartedStep } from './get-started';
  */
 const SECTIONS = [
   { href: '/home', label: 'Home' },
-  { href: '/agreements', label: 'Packets' },
+  { href: '/agreements', label: 'Documents' },
   { href: '/templates', label: 'Templates' },
   { href: '/reports', label: 'Reports' },
   { href: '/admin', label: 'Admin' },
@@ -44,7 +44,7 @@ export function TopNav({
 
         <nav className="flex h-full min-w-0 flex-1 items-stretch gap-1">
           {SECTIONS.map((s) => {
-            // /agreements/anything still lights up Packets.
+            // /agreements/anything still lights up Documents.
             const active = pathname === s.href || pathname.startsWith(`${s.href}/`);
             return (
               <Link
@@ -72,7 +72,7 @@ export function TopNav({
           )}
           <Link href="/billing">
             <Button variant="dark" size="md" className="rounded-full px-5">
-              Buy Now
+              Get Pro
             </Button>
           </Link>
 

@@ -6,7 +6,7 @@ import { AgreementsClient } from './agreements-client';
 import { isViewKey } from './views';
 
 /**
- * Packets — every document this workspace has sent or received, sliced by
+ * Documents — every document this workspace has sent or received, sliced by
  * quick view. The view lives in the URL so a link to "Waiting for Others" is
  * a real link.
  */

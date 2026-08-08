@@ -39,7 +39,7 @@ export default async function RequestDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="min-w-0">
           <Link href="/agreements?view=sent" className="text-sm text-ink-muted hover:text-ink">
-            ← Packets
+            ← Documents
           </Link>
           <h1 className="mt-1.5 truncate text-3xl font-semibold text-ink">{r.documentName}</h1>
         </div>

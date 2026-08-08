@@ -51,7 +51,7 @@ export const VIEWS: Record<ViewKey, ViewDef> = {
     title: 'Inbox',
     emptyTitle: 'Your inbox is empty',
     emptyBody:
-      'Packets sent to your email address appear here. Documents you send live under Sent.',
+      'Documents sent to your email address appear here. Documents you send live under Sent.',
     filter: 'sender',
   },
   waiting: {

@@ -7,7 +7,7 @@ import { Dropdown, MenuDivider, MenuItem } from '@/components/ui/overlays';
 import { TemplatePicker } from '@/components/templates/template-picker';
 
 /**
- * The single way to start work, used on Home and on the Packets header.
+ * The single way to start work, used on Home and on the Documents header.
  *
  * A split button rather than a row of four: the primary half does the common
  * thing (upload a document and tag it) and the menu holds the variations. The
