@@ -231,6 +231,52 @@ export function TemplateEditor({ template }: { template: Template }) {
 
   const colorOf = useCallback((key: string) => Math.max(0, indexOfKey(key)), []);
 
+  /**
+   * Give every signer who has none their own copy of an already-tagged
+   * signer's fields.
+   *
+   * Two people cannot share one signature box — the second stamp would land on
+   * top of the first — so a shared layout has to become one set of fields PER
+   * signer. Tagging each of them by hand is the same work repeated, and it is
+   * where senders stall: the Send button is disabled and the reason is a line
+   * of text in another corner of the screen.
+   *
+   * Each copy is pushed down by its own height plus a small gap, in the order
+   * the signers are listed, so a two-party contract comes out as two signature
+   * lines rather than one illegible overlap. Anything that would fall off the
+   * page is pulled back inside: the contract rejects a field crossing the
+   * boundary, and losing the layout to a validation error would be worse than
+   * a slightly tight stack. They are ordinary fields afterwards — drag them
+   * anywhere, or delete them.
+   */
+  const copyFieldsToEverySigner = useCallback(() => {
+    const donorKey = fields[0]?.recipientKey;
+    if (!donorKey) return;
+    const donor = fields.filter((f) => f.recipientKey === donorKey);
+
+    commit((prev) => {
+      const additions: EditorField[] = [];
+      let step = 0;
+      for (const r of recipients) {
+        if (r.role !== 'signer' || r.key === donorKey) continue;
+        if (prev.some((f) => f.recipientKey === r.key)) continue; // already tagged
+        step += 1;
+        for (const f of donor) {
+          const gap = (f.h + 0.012) * step;
+          additions.push({
+            ...f,
+            id: crypto.randomUUID(),
+            recipientKey: r.key,
+            // Clamp, never wrap: a field that reappears at the top of the page
+            // would read as a bug, and one past the edge fails validation.
+            y: Math.min(f.y + gap, 1 - f.h),
+          });
+        }
+      }
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+  }, [fields, recipients, commit]);
+
   const pages = useMemo(
     () => Array.from({ length: template.pageCount }, (_, i) => i + 1),
     [template.pageCount],
@@ -606,11 +652,27 @@ export function TemplateEditor({ template }: { template: Template }) {
                 only as a greyed-out button they have to hover to understand. */}
             <div className="mt-auto border-t border-border px-5 py-4 text-sm">
               {untagged.length > 0 ? (
-                <p className="text-warning">
-                  {untagged.map((r) => recipientLabel(r, recipients.indexOf(r))).join(', ')}{' '}
-                  {untagged.length === 1 ? 'has' : 'have'} no fields yet — drop at least one for
-                  each signer before sending.
-                </p>
+                <>
+                  <p className="text-warning">
+                    {untagged.map((r) => recipientLabel(r, recipients.indexOf(r))).join(', ')}{' '}
+                    {untagged.length === 1 ? 'has' : 'have'} no fields yet — drop at least one for
+                    each signer before sending.
+                  </p>
+                  {/* The fix, offered where the problem is stated. Retagging by
+                      hand is the same work repeated, and this is the point at
+                      which a sender is stuck looking at a disabled button. */}
+                  {fields.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="mt-3 w-full"
+                      onClick={copyFieldsToEverySigner}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Give {untagged.length === 1 ? 'them' : 'them all'} the same fields
+                    </Button>
+                  )}
+                </>
               ) : fields.length === 0 ? (
                 <p className="text-ink-muted">Drag a field from above onto the document.</p>
               ) : (
