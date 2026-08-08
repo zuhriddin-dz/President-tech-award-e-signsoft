@@ -46,7 +46,35 @@ export function SetupStep({
     onChange(recipients.filter((_, idx) => idx !== i));
   }
 
-  const ready = recipients.some((r) => r.role === 'signer' && isComplete(r));
+  /**
+   * Why Next is blocked, decided here so the sender is told in the step where
+   * the fault is — not by the server after they have tagged a document.
+   *
+   * "Some signer is complete" was too weak on both sides:
+   *
+   *  - A HALF-FILLED recipient passed. send() then drops anyone without an
+   *    address, so that person silently vanished from the envelope while their
+   *    fields stayed on the document — leaving boxes nobody could ever fill,
+   *    and an envelope that could never complete.
+   *
+   *  - A DUPLICATE address passed. The contract refuses the same email twice on
+   *    one envelope, so the send failed at the end of the whole flow. It is the
+   *    obvious thing to type when testing with two signers and one inbox.
+   */
+  const filled = recipients.filter((r) => r.email.trim().length > 0);
+  const addresses = filled.map((r) => r.email.trim().toLowerCase());
+  const duplicate = new Set(addresses).size !== addresses.length;
+  const incomplete = recipients.filter((r) => !isComplete(r)).length;
+  const hasSigner = recipients.some((r) => r.role === 'signer' && isComplete(r));
+  const ready = hasSigner && incomplete === 0 && !duplicate;
+
+  const blockedBecause = duplicate
+    ? 'Two recipients have the same email address. Each person needs their own — a single envelope cannot be signed twice by one address.'
+    : incomplete > 0
+      ? `${incomplete === 1 ? 'One recipient still needs' : `${incomplete} recipients still need`} a valid email address.`
+      : !hasSigner
+        ? 'Add at least one signer with a valid email address.'
+        : null;
 
   return (
     <div className="thin-scroll h-full overflow-y-auto bg-surface-muted">
@@ -195,9 +223,9 @@ export function SetupStep({
           <Button variant="dark" size="lg" disabled={!ready} onClick={onNext}>
             Next: add fields
           </Button>
-          {!ready && (
-            <span className="text-sm text-ink-muted">
-              Add at least one signer with a valid email address.
+          {blockedBecause && (
+            <span className={`text-sm ${duplicate ? 'text-warning' : 'text-ink-muted'}`}>
+              {blockedBecause}
             </span>
           )}
         </div>
