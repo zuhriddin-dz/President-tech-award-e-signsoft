@@ -110,7 +110,7 @@ export function TemplatePicker({ onClose }: { onClose: () => void }) {
         <>
           {error && <span className="mr-auto text-sm text-danger">{error}</span>}
           <Button variant="dark" disabled={!selected || busy} onClick={addSelected}>
-            {busy ? 'Opening…' : 'Add to Packet'}
+            {busy ? 'Opening…' : 'Use this template'}
           </Button>
         </>
       }

@@ -16,7 +16,7 @@ import { TemplatePicker } from '@/components/templates/template-picker';
  */
 export function NewPacketButton({
   size = 'md',
-  label = 'New Packet',
+  label = 'New Document',
 }: {
   size?: 'md' | 'lg';
   label?: string;

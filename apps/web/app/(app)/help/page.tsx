@@ -10,26 +10,26 @@ import { Card, CardHeader } from '@/components/ui/primitives';
 const TOPICS = [
   {
     q: 'Someone says their signing link does not work',
-    a: 'A link stops working the moment it is used, cancelled, re-issued, or the packet expires. Only the hash is stored, so a reminder cannot repeat the original URL — sending a reminder issues a fresh link and retires the old one. Open the packet and use Resend; the newest email is always the one that works.',
+    a: 'A link stops working the moment it is used, cancelled, re-issued, or the document expires. Only the hash is stored, so a reminder cannot repeat the original URL — sending a reminder issues a fresh link and retires the old one. Open the document and use Resend; the newest email is always the one that works.',
   },
   {
     q: 'The first person has not signed and everyone else is stuck',
-    a: 'In "one after another" order, each person is invited only once the person above them finishes. Open the packet and use Remind, or Resend to issue a fresh link. If it is not going to happen, Cancel — everyone outstanding is told and every link dies.',
+    a: 'In "one after another" order, each person is invited only once the person above them finishes. Open the document and use Remind, or Resend to issue a fresh link. If it is not going to happen, Cancel — everyone outstanding is told and every link dies.',
   },
   {
     q: 'Can I change a document after sending it?',
-    a: 'No. The document and its field layout are snapshotted at send time, so later edits to the template never alter a packet already in flight. That is what makes the sealed copy mean something. Cancel and send again.',
+    a: 'No. The file and its field layout are snapshotted at send time, so later edits to the template never alter a document already in flight. That is what makes the sealed copy mean something. Cancel and send again.',
   },
   {
     q: 'How do I prove a signed document has not been altered?',
-    a: 'Open the packet and use Verify. The server re-reads the stored file, re-hashes it, and checks the Ed25519 seal bound to that packet and its completion time. Both must pass. A single changed byte fails it.',
+    a: 'Open the document and use Verify. The server re-reads the stored file, re-hashes it, and checks the Ed25519 seal bound to that document and its completion time. Both must pass. A single changed byte fails it.',
   },
   {
     q: 'Does the signer need an account?',
     a: 'No. They open their link, agree to sign electronically, fill their fields, and finish. We record when they opened it, when they agreed, when they signed, and from which address.',
   },
   {
-    q: 'Deleting a packet',
+    q: 'Deleting a document',
     a: 'Delete only hides it from your views. The signed copy and the audit trail are evidence and are always kept — you can restore it from the Deleted tab.',
   },
 ] as const;
@@ -74,7 +74,7 @@ export default function HelpPage() {
             [
               <LifeBuoy key="i" className="h-5 w-5" />,
               'Still stuck',
-              'Email us with the packet reference from its detail page and we can trace exactly what happened.',
+              'Email us with the document reference from its detail page and we can trace exactly what happened.',
               'mailto:support@esignsoft.uz',
               'support@esignsoft.uz',
             ],

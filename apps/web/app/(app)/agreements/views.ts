@@ -2,15 +2,19 @@ import type { SignatureRequest } from '@docflow/contracts';
 import { isExpiringSoon, isLive } from '@/lib/status';
 
 /**
- * The quick views, defined once. Each is a pure predicate over the packet
+ * The quick views, defined once. Each is a pure predicate over the document
  * list plus the copy for its header and empty state — so the tab strip, the
  * page title, the counts and the filtering can never disagree about what
  * "Completed" means.
  *
- * A PACKET is what we call the thing you send: a document, its fields, and
- * the people who have to deal with it. It is the one coined word in the
- * product — everything around it (Inbox, Sent, Drafts, Completed) is
- * deliberately ordinary, which is what makes one new noun learnable.
+ * The thing you send — a file, its fields, and the people who have to deal
+ * with it — is a DOCUMENT everywhere the user can see. It used to be called a
+ * packet; the coined word was dropped because a name nobody arrives already
+ * knowing is a cost paid on every screen, and it bought nothing.
+ *
+ * Identifiers still say packet (PacketsPage, NewPacketButton, packet-actions).
+ * That rename is mechanical and separate — worth doing, but not worth a
+ * half-applied vocabulary in the meantime. Read them as "document".
  *
  * Ordered by URGENCY, not by lifecycle: what needs you, then what you are
  * waiting on, then the archive.
@@ -59,7 +63,7 @@ export const VIEWS: Record<ViewKey, ViewDef> = {
     label: 'Waiting for Others',
     title: 'Waiting for Others',
     emptyTitle: 'Nobody owes you a signature',
-    emptyBody: 'Every packet you have sent has been dealt with.',
+    emptyBody: 'Every document you have sent has been dealt with.',
     filter: 'status',
   },
   sent: {
@@ -82,7 +86,7 @@ export const VIEWS: Record<ViewKey, ViewDef> = {
     key: 'completed',
     label: 'Completed',
     title: 'Completed',
-    emptyTitle: 'No completed packets yet',
+    emptyTitle: 'No completed documents yet',
     emptyBody: 'Once every signer finishes, the sealed copy lands here.',
     filter: 'sender',
   },
@@ -92,7 +96,7 @@ export const VIEWS: Record<ViewKey, ViewDef> = {
     title: 'Deleted',
     emptyTitle: 'Nothing deleted',
     emptyBody:
-      'Deleting only hides a packet from your other views — the signed copy and its audit trail are always kept.',
+      'Deleting only hides a document from your other views — the signed copy and its audit trail are always kept.',
     filter: 'status',
   },
 };
@@ -114,7 +118,7 @@ export function isViewKey(value: string | undefined): value is ViewKey {
 
 /**
  * Rows for a view. `myEmail` is the signed-in user's verified address — the
- * only thing that can decide whether a packet is addressed to THEM rather
+ * only thing that can decide whether a document is addressed to THEM rather
  * than merely visible to their workspace.
  */
 export function selectRows(
@@ -139,8 +143,8 @@ export function selectRows(
       return alive.filter((r) => r.status === 'completed');
     case 'deleted':
       return all.filter((r) => r.deletedAt);
-    // Drafts are prepared documents, not packets — the page renders them
-    // from the template list instead.
+    // Drafts are prepared TEMPLATES, not sent documents — the page renders
+    // them from the template list instead.
     case 'drafts':
       return [];
   }

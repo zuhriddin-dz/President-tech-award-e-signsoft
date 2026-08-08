@@ -111,7 +111,7 @@ export function SetupStep({
                       count > 0
                         ? 'Delete this recipient’s fields first'
                         : recipients.length === 1
-                          ? 'A packet needs at least one recipient'
+                          ? 'A document needs at least one recipient'
                           : 'Remove recipient'
                     }
                     aria-label={`Remove recipient ${i + 1}`}

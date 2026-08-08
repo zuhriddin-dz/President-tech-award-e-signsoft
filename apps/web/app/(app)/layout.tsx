@@ -40,7 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
     {
       key: 'send',
-      label: 'Send a packet for signature',
+      label: 'Send a document for signature',
       cta: 'Send',
       href: '/templates',
       done: requests.length > 0,
@@ -48,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     {
       key: 'signed',
       label: 'Get your first signature',
-      cta: 'View packets',
+      cta: 'View documents',
       href: '/agreements?view=sent',
       done: requests.some((r) => r.status === 'completed'),
     },

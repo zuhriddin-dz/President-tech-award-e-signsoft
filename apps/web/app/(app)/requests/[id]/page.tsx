@@ -118,7 +118,7 @@ export default async function RequestDetailPage({
 
         <Band>Signer Events</Band>
         {signers.length === 0 ? (
-          <Empty>No signers on this packet.</Empty>
+          <Empty>No signers on this document.</Empty>
         ) : (
           <div className="divide-y divide-border">
             {signers.map((p) => (
@@ -129,7 +129,7 @@ export default async function RequestDetailPage({
 
         <Band>Copy Recipient Events</Band>
         {copies.length === 0 ? (
-          <Empty>Nobody was copied on this packet.</Empty>
+          <Empty>Nobody was copied on this document.</Empty>
         ) : (
           <div className="divide-y divide-border">
             {copies.map((p) => (
@@ -190,7 +190,7 @@ export default async function RequestDetailPage({
           </p>
           <p className="mt-3">
             The completed document is fingerprinted with SHA-256 and sealed with an Ed25519
-            signature bound to this packet and its completion time. Any change to the file,
+            signature bound to this document and its completion time. Any change to the file,
             however small, makes verification fail.
           </p>
           {r.documentHash && (

@@ -31,7 +31,7 @@ export const TERMS: LegalSection[] = [
     heading: 'Your documents',
     body: [
       'Your documents are yours. We store them so the service can work, and so the audit trail behind a signature remains provable. We do not sell them, and we do not use their contents to train models.',
-      'Deleting a packet hides it from your views. The signed copy and its audit trail are retained as evidence — if you need them destroyed outright, ask us and we will do it and confirm.',
+      'Deleting a document hides it from your views. The signed copy and its audit trail are retained as evidence — if you need them destroyed outright, ask us and we will do it and confirm.',
     ],
   },
   {

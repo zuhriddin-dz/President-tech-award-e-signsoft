@@ -11,13 +11,10 @@ import {
 } from '@nestjs/common';
 import {
   BulkRequestIdsSchema,
-  CreateFolderSchema,
   MoveToFolderSchema,
   SendRequestSchema,
   VoidRequestSchema,
   type BulkRequestIds,
-  type CreateFolder,
-  type Folder,
   type MoveToFolder,
   type SendRequest,
   type VerifyResult,

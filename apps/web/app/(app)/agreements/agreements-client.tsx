@@ -253,7 +253,7 @@ export function AgreementsClient({
             )}
           >
             <MenuItem href={`/agreements?view=${view}`} selected={folderId === null}>
-              All packets
+              All documents
             </MenuItem>
             {folders.length > 0 && <MenuDivider />}
             {folders.map((f) => (
@@ -274,7 +274,7 @@ export function AgreementsClient({
 
           <Dropdown align="end" trigger={(open) => <SelectChip label="Visibility" open={open} />}>
             <div className="max-w-xs px-4 py-3 text-sm text-ink-muted">
-              Everyone in this workspace already sees these packets — access follows workspace
+              Everyone in this workspace already sees these documents — access follows workspace
               membership, not a per-document share.
             </div>
             <MenuDivider />
@@ -685,7 +685,7 @@ export function AgreementsClient({
               required
             />
             <p className="mt-3 text-sm text-ink-muted">
-              Folders organise your packets. They never change who can see a document — that is
+              Folders organise your documents. They never change who can see one — that is
               decided by workspace membership.
             </p>
           </div>

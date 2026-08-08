@@ -10,7 +10,7 @@ import { isExpiringSoon, isLive, statusView } from '@/lib/status';
 
 /**
  * Home — the sender's landing pad. Three questions in one screen: what needs
- * me, where do my packets stand, what do I send most often.
+ * me, where do my documents stand, what do I send most often.
  *
  * The colour sits on the RIGHT, in a dark panel, rather than in a band across
  * the top. That is deliberate: a full-bleed gradient header is the single
@@ -36,7 +36,7 @@ export default async function HomePage() {
   const waiting = visible.filter(isLive);
   const expiring = visible.filter((r) => isExpiringSoon(r));
 
-  // "To sign" is work waiting on YOU — a packet where you are the recipient
+  // "To sign" is work waiting on YOU — a document where you are the recipient
   // who still has to sign. Anything else belongs in the feed, not here.
   const myEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() ?? null;
   const toSign = myEmail
@@ -88,7 +88,7 @@ export default async function HomePage() {
         {/* Left: the feed */}
         <Card className="min-w-0">
           <CardHeader
-            title="Packet activity"
+            title="Document activity"
             info="Everything sent from this workspace, newest first."
             action={
               <Link

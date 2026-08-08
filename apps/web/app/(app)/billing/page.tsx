@@ -30,8 +30,8 @@ const PLANS: readonly Plan[] = [
     blurb: 'One person, everything that makes a signature hold up.',
     features: [
       'Unlimited documents and templates',
-      'Up to 5 signers per packet',
-      'Sealed copy and Certificate of Completion on every packet',
+      'Up to 5 signers per document',
+      'Sealed copy and Certificate of Completion on every document',
       'Signing links that expire and can be cancelled',
       'Tamper verification you can run yourself',
     ],
@@ -44,7 +44,7 @@ const PLANS: readonly Plan[] = [
     highlight: true,
     features: [
       'Everything in Personal',
-      'Shared workspace — everyone sees the same packets',
+      'Shared workspace — everyone sees the same documents',
       'Signing order, reminders and expiry sweeps',
       'Per-recipient field tagging',
       'Folders, filtering and CSV export',
@@ -81,7 +81,7 @@ export default async function BillingPage() {
     <div className="mx-auto w-full max-w-[1360px] px-6 py-6">
       <h1 className="text-2xl font-semibold text-ink">Plan and billing</h1>
       <p className="mt-1.5 text-sm text-ink-muted">
-        {tenant?.kind === 'personal' ? 'Personal' : 'Company'} workspace · {sent} packet
+        {tenant?.kind === 'personal' ? 'Personal' : 'Company'} workspace · {sent} document
         {sent === 1 ? '' : 's'} sent
       </p>
 
@@ -96,7 +96,7 @@ export default async function BillingPage() {
             ) : (
               <>Your trial has ended.</>
             )}{' '}
-            Nothing is switched off while billing is still being set up — your packets and signed
+            Nothing is switched off while billing is still being set up — your documents and signed
             copies stay exactly where they are.
           </p>
         </div>

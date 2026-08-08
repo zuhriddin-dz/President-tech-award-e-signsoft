@@ -88,7 +88,7 @@ export function PacketActions({ detail }: { detail: SignatureRequestDetail }) {
           {confirmVoid ? (
             <div className="flex flex-col gap-2">
               <p className="text-sm text-ink">
-                Cancel this packet? Everyone still outstanding is told, and their links stop
+                Cancel this document? Everyone still outstanding is told, and their links stop
                 working. This cannot be undone.
               </p>
               <input
