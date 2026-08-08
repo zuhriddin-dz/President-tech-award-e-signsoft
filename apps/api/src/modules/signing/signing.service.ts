@@ -338,9 +338,30 @@ export class SigningService {
     const row = await this.db.tx((tx) =>
       tx.signatureRequest.findUnique({ where: { id: resolved.requestId } }),
     );
-    if (!row || row.signingTokenHash !== resolved.tokenHash) notValid();
+    if (!row) notValid();
     if (row.status !== 'completed') notValid();
     if (row.expiresAt.getTime() <= Date.now()) notValid();
+
+    // Re-check BY the hash, against the row that actually holds it. Since
+    // routing the token belongs to ONE person and their recipient row carries
+    // the authoritative hash; the request's own column is a legacy leftover and
+    // is null on every envelope the current send flow creates.
+    //
+    // Comparing against that null was a 404 for everyone: the signer's page
+    // polls /status to know when to reveal the download, so it never revealed
+    // it — "Preparing your signed copy…" forever, on a document that had in
+    // fact been sealed, certified and emailed seconds earlier.
+    if (resolved.recipientId) {
+      const rc = await this.db.tx((tx) =>
+        tx.recipient.findUnique({ where: { id: resolved.recipientId! } }),
+      );
+      if (!rc || rc.requestId !== row.id) notValid();
+      if (rc.signingTokenHash !== resolved.tokenHash) notValid();
+    } else if (row.signingTokenHash !== resolved.tokenHash) {
+      // Legacy single-recipient envelope: the hash really is on the request.
+      notValid();
+    }
+
     return {
       documentName: row.documentName,
       signedPdfKey: row.signedPdfKey,
