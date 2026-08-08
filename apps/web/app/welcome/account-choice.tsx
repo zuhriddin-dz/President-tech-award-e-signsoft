@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CreateOrganization } from '@clerk/nextjs';
+import { CreateOrganization, useAuth, useOrganizationList } from '@clerk/nextjs';
 import { Building2, Check, UserRound } from 'lucide-react';
 import { API_PATHS } from '@docflow/contracts';
 import { Button } from '@/components/ui/primitives';
@@ -16,9 +16,33 @@ type Mode = 'choose' | 'company';
  */
 export function AccountChoice() {
   const router = useRouter();
+  const { isLoaded: authLoaded, orgId } = useAuth();
+  const { userMemberships, setActive } = useOrganizationList({ userMemberships: true });
   const [mode, setMode] = useState<Mode>('choose');
   const [busy, setBusy] = useState(false);
+  /** The user has asked for a company workspace and we are awaiting the claim. */
+  const [entering, setEntering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * The server picks the workspace from the session token's org claim, and that
+   * claim exists only once an organization is ACTIVE. Clerk's
+   * afterCreateOrganizationUrl navigated the moment the org was created, which
+   * raced that update: /home asked the API with a token still carrying no org,
+   * got ONBOARDING_REQUIRED, and was redirected straight back here. "Set up a
+   * company" therefore looked like it did nothing, and trying again created a
+   * second organization. So wait for the claim instead of assuming it.
+   *
+   * Gated on `entering` deliberately. Navigating on orgId alone would fire on
+   * mount too, and if the server ever disagreed the two pages would redirect
+   * at each other forever.
+   */
+  useEffect(() => {
+    if (entering && authLoaded && orgId) router.replace('/home');
+  }, [entering, authLoaded, orgId, router]);
+
+  /** Companies this user already belongs to — may exist without one being active. */
+  const memberships = userMemberships?.data ?? [];
 
   async function startPersonal() {
     setBusy(true);
@@ -33,14 +57,41 @@ export function AccountChoice() {
     }
   }
 
+  /**
+   * Open a company this user is already a member of. Without this, someone who
+   * returns with no active organization is offered only "create" and quietly
+   * accumulates a duplicate workspace on every visit.
+   */
+  async function openCompany(organizationId: string) {
+    setBusy(true);
+    setError(null);
+    setEntering(true);
+    try {
+      await setActive?.({ organization: organizationId });
+      // The effect above navigates once the org claim reaches the session.
+    } catch {
+      setError('Could not open that workspace.');
+      setEntering(false);
+      setBusy(false);
+    }
+  }
+
   if (mode === 'company') {
     return (
       <div className="mt-10 flex flex-col items-center gap-5">
         <p className="text-sm text-ink-muted">Name your company workspace to continue.</p>
-        <CreateOrganization afterCreateOrganizationUrl="/home" skipInvitationScreen />
+        {/* No afterCreateOrganizationUrl: navigating here would race the org
+            claim reaching the session. The effect above waits for it. */}
+        <CreateOrganization skipInvitationScreen />
+        {entering && (
+          <p className="text-sm text-ink-muted">Opening your workspace…</p>
+        )}
         <button
           className="text-sm font-semibold text-brand-link hover:underline"
-          onClick={() => setMode('choose')}
+          onClick={() => {
+            setEntering(false);
+            setMode('choose');
+          }}
         >
           ← Back to the choice
         </button>
@@ -72,14 +123,46 @@ export function AccountChoice() {
               variant="secondary"
               size="lg"
               className="w-full"
-              onClick={() => setMode('company')}
+              onClick={() => {
+                // Arm the wait before Clerk can create anything, so the claim
+                // is never missed between creation and this state landing.
+                setEntering(true);
+                setMode('company');
+              }}
               disabled={busy}
             >
-              Set up a company
+              {memberships.length > 0 ? 'Set up another company' : 'Set up a company'}
             </Button>
           }
         />
       </div>
+
+      {/* Already a member somewhere, but nothing active: offer the door in
+          rather than only the door to a new, duplicate workspace. */}
+      {memberships.length > 0 && (
+        <div className="mt-8 rounded-xl border border-border bg-surface p-6">
+          <h3 className="text-sm font-semibold text-ink">Your company workspaces</h3>
+          <ul className="mt-3 flex flex-col gap-2">
+            {memberships.map((m) => (
+              <li key={m.organization.id} className="flex items-center justify-between gap-4">
+                <span className="flex items-center gap-2 text-sm text-ink">
+                  <Building2 className="h-4 w-4 text-ink-muted" />
+                  {m.organization.name}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openCompany(m.organization.id)}
+                  disabled={busy}
+                >
+                  {busy && entering ? 'Opening…' : 'Open'}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {error && <p className="mt-4 text-center text-sm text-danger">{error}</p>}
     </>
   );
