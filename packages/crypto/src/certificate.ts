@@ -14,21 +14,34 @@ import { toPdfSafeText } from './pdf-text.js';
  * and here is proof the file has not changed since." The timestamps are listed
  * separately, never collapsed, because each supports part of that sentence.
  */
+/**
+ * One person's ceremony record. Every field here is per-signer: on a two-party
+ * agreement each side consents, opens and signs at its own moment, from its own
+ * address — which is precisely what the certificate has to be able to show.
+ */
+export interface CertificateSigner {
+  name: string | null;
+  email: string;
+  /** Set only when the signer also had an account in this tenant. */
+  userId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  viewedAt: Date | null;
+  consentAt: Date | null;
+  /** When THIS person signed — not when the envelope completed. */
+  signedAt: Date | null;
+  method: string;
+}
+
 export interface CertificateInput {
   requestId: string;
   documentName: string;
-  signerName: string | null;
-  signerEmail: string;
-  /** Set only when the signer also had an account in this tenant. */
-  signerUserId: string | null;
   senderEmail: string | null;
-  signerIp: string | null;
-  signerUserAgent: string | null;
+  /** Every signer, in routing order. Exactly one for a single-party envelope. */
+  signers: CertificateSigner[];
   sentAt: Date | null;
-  viewedAt: Date | null;
-  consentAt: Date | null;
+  /** When the ENVELOPE completed — the instant the seal is bound to. */
   signedAt: Date;
-  method: string;
   /** sha256 hex of the signed PDF. */
   documentHash: string;
   /** base64 Ed25519 signature over the canonical seal string. */
@@ -78,7 +91,7 @@ function chunk(value: string, perLine: number): string[] {
 
 export async function buildCertificatePdf(input: CertificateInput): Promise<Buffer> {
   const pdf = await PDFDocument.create();
-  const page = pdf.addPage([PAGE_W, PAGE_H]);
+  let page = pdf.addPage([PAGE_W, PAGE_H]);
   const font = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
@@ -87,6 +100,18 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
   const rule = rgb(0.867, 0.89, 0.914); // --color-border #dde3e9
 
   let y = PAGE_H - MARGIN;
+
+  /**
+   * Break to a new page when the next block would not fit. Load-bearing once an
+   * envelope has more than one signer: the tamper-evidence section is drawn
+   * LAST, so without this it is the first thing pushed off the bottom — leaving
+   * a certificate that looks complete and silently omits the proof.
+   */
+  const ensure = (needed: number) => {
+    if (y - needed >= MARGIN) return;
+    page = pdf.addPage([PAGE_W, PAGE_H]);
+    y = PAGE_H - MARGIN;
+  };
 
   const text = (
     value: string,
@@ -104,12 +129,16 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
   };
 
   const row = (label: string, value: string) => {
+    ensure(18);
     text(label, { size: 9, color: muted });
     text(value, { size: 10, x: MARGIN + 150 });
     y -= 18;
   };
 
   const section = (title: string) => {
+    // Enough for the heading, its rule and a first row, so a heading is never
+    // orphaned alone at the foot of a page.
+    ensure(64);
     y -= 10;
     text(title, { size: 11, bold: true });
     y -= 6;
@@ -156,40 +185,55 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
   section('Document');
   row('Document', input.documentName);
   row('Sent by', input.senderEmail ?? '—');
-
-  section('Signer');
-  row('Name', input.signerName ?? '—');
-  row('Email', input.signerEmail);
-  // The mailbox is the identity anchor; an account is a bonus, not required.
-  row('Account', input.signerUserId ?? 'No account (signed via secure link)');
-  row('IP address', input.signerIp ?? '—');
-
-  const ua = chunk(input.signerUserAgent ?? '—', 62);
-  text('Browser', { size: 9, color: muted });
-  ua.forEach((line, i) => {
-    text(line, { size: 8, x: MARGIN + 150 });
-    if (i < ua.length - 1) y -= 11;
-  });
-  y -= 20;
-
-  section('Ceremony timeline');
   row('Sent', fmt(input.sentAt));
-  row('First opened', fmt(input.viewedAt));
-  row('Consent to sign electronically', fmt(input.consentAt));
-  row('Signed', fmt(input.signedAt));
-  row('Signature method', input.method);
+  row('Signers', String(input.signers.length));
+  row('Completed', fmt(input.signedAt));
 
+  // One block per person. The ceremony timeline lives INSIDE it: who consented
+  // and signed when, from where, is a fact about a signer and not about the
+  // envelope — a shared timeline would be a fiction the moment two people sign.
+  input.signers.forEach((signer, i) => {
+    section(
+      input.signers.length === 1 ? 'Signer' : `Signer ${i + 1} of ${input.signers.length}`,
+    );
+    row('Name', signer.name ?? '—');
+    row('Email', signer.email);
+    // The mailbox is the identity anchor; an account is a bonus, not required.
+    row('Account', signer.userId ?? 'No account (signed via secure link)');
+    row('IP address', signer.ip ?? '—');
+
+    const ua = chunk(signer.userAgent ?? '—', 62);
+    ensure(11 * ua.length + 9);
+    text('Browser', { size: 9, color: muted });
+    ua.forEach((line, j) => {
+      text(line, { size: 8, x: MARGIN + 150 });
+      if (j < ua.length - 1) y -= 11;
+    });
+    y -= 20;
+
+    row('First opened', fmt(signer.viewedAt));
+    row('Consent to sign electronically', fmt(signer.consentAt));
+    row('Signed', fmt(signer.signedAt));
+    row('Signature method', signer.method);
+  });
+
+  const hashLines = chunk(input.documentHash, 72);
+  const sealLines = chunk(input.sealSignature, 72);
   section('Tamper evidence');
+  // Keep the fingerprint and the seal together on one page: split across a
+  // break they read as two unrelated blobs, and this is the part a reader is
+  // meant to be able to check by hand.
+  ensure(14 + hashLines.length * 11 + 20 + sealLines.length * 11);
   text('SHA-256 of the signed document', { size: 9, color: muted });
   y -= 14;
-  chunk(input.documentHash, 72).forEach((line) => {
+  hashLines.forEach((line) => {
     text(line, { size: 8 });
     y -= 11;
   });
   y -= 6;
   text(`Server seal (Ed25519, key ${input.sealKid})`, { size: 9, color: muted });
   y -= 14;
-  chunk(input.sealSignature, 72).forEach((line) => {
+  sealLines.forEach((line) => {
     text(line, { size: 8 });
     y -= 11;
   });
@@ -204,6 +248,7 @@ export async function buildCertificatePdf(input: CertificateInput): Promise<Buff
     'address and network recorded above.',
   ];
   explanation.forEach((line) => {
+    ensure(11);
     text(line, { size: 8, color: muted });
     y -= 11;
   });

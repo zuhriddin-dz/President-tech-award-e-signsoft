@@ -4,6 +4,7 @@ import {
   parseSealRing,
   sha256Hex,
   type CertificateInput,
+  type CertificateSigner,
 } from '@docflow/crypto';
 import type { TemplateField } from '@docflow/contracts';
 import { env } from '../../config/env.js';
@@ -119,20 +120,47 @@ export async function completeSignature(tenant: string, requestId: string): Prom
   });
 
   // 4. The Certificate of Completion — the evidence artifact.
+  //
+  // EVERY signer, each with their own ceremony record. Reading these off the
+  // request's legacy columns named only one person, so a two-party agreement
+  // produced a certificate that silently omitted the other side — the evidence
+  // being incomplete in exactly the case it matters most.
+  const signerRows = recipients.filter((r) => r.role === 'signer');
+  const certificateSigners: CertificateSigner[] =
+    signerRows.length > 0
+      ? signerRows.map((r) => ({
+          name: r.name,
+          email: r.email,
+          userId: null,
+          ip: r.signerIp,
+          userAgent: r.signerUserAgent,
+          viewedAt: r.viewedAt,
+          consentAt: r.consentAt,
+          signedAt: r.completedAt,
+          method: methodLabel(r.signatureMethod),
+        }))
+      : // Legacy envelopes (pre-routing) carry their one signer on the request.
+        [
+          {
+            name: req.recipientName,
+            email: req.recipientEmail,
+            userId: null,
+            ip: req.signerIp,
+            userAgent: req.signerUserAgent,
+            viewedAt: req.viewedAt,
+            consentAt: req.consentAt,
+            signedAt: req.completedAt,
+            method: methodLabel(req.signatureMethod),
+          },
+        ];
+
   const certificate: CertificateInput = {
     requestId: req.id,
     documentName: req.documentName,
-    signerName: req.recipientName,
-    signerEmail: req.recipientEmail,
-    signerUserId: null,
     senderEmail: req.senderEmail,
-    signerIp: req.signerIp,
-    signerUserAgent: req.signerUserAgent,
+    signers: certificateSigners,
     sentAt: req.sentAt,
-    viewedAt: req.viewedAt,
-    consentAt: req.consentAt,
     signedAt: req.completedAt,
-    method: methodLabel(req.signatureMethod),
     documentHash,
     sealSignature,
     sealKid,

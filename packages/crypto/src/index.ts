@@ -18,7 +18,11 @@ export {
   sha256Hex,
   type MintedSigningToken,
 } from './tokens.js';
-export { buildCertificatePdf, type CertificateInput } from './certificate.js';
+export {
+  buildCertificatePdf,
+  type CertificateInput,
+  type CertificateSigner,
+} from './certificate.js';
 export { toPdfSafeText } from './pdf-text.js';
 export {
   isPng,
