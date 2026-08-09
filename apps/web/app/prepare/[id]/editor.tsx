@@ -277,6 +277,19 @@ export function TemplateEditor({ template }: { template: Template }) {
     });
   }, [fields, recipients, commit]);
 
+  /**
+   * Open the review dialog, first handing a copy of the tagged signer's fields
+   * to anyone who has none — so placing fields once really does mean everyone
+   * gets them, without the sender having to find a button to say so.
+   *
+   * Safe to call unconditionally: the copy skips any signer who already has
+   * fields of their own, so deliberate per-signer tagging is never touched.
+   */
+  const openReview = useCallback(() => {
+    copyFieldsToEverySigner();
+    setReviewing(true);
+  }, [copyFieldsToEverySigner]);
+
   const pages = useMemo(
     () => Array.from({ length: template.pageCount }, (_, i) => i + 1),
     [template.pageCount],
@@ -351,7 +364,19 @@ export function TemplateEditor({ template }: { template: Template }) {
   }
 
   const untagged = signers.filter((r) => fieldCountFor(r.key) === 0);
-  const canSend = signers.length > 0 && fields.length > 0 && untagged.length === 0;
+  /**
+   * An untagged signer no longer blocks Send. It used to, and the way out was a
+   * button in the corner of the field palette — which is the wrong shape for
+   * the problem: the sender is looking at a greyed-out Send, not at the
+   * palette, and "tag every person separately" is not how anyone thinks about
+   * sending one document to two people.
+   *
+   * openReview() gives anyone still untagged a copy of the first signer's
+   * fields on the way through, so placing fields once really does mean
+   * everyone gets them. Explicit per-signer tagging still works exactly as
+   * before — this only fills in what was left empty.
+   */
+  const canSend = signers.length > 0 && fields.length > 0;
 
   return (
     <div className="flex h-screen flex-col bg-surface">
@@ -507,7 +532,7 @@ export function TemplateEditor({ template }: { template: Template }) {
               </span>
             )}
           >
-            <MenuItem onClick={() => setReviewing(true)} disabled={!canSend}>
+            <MenuItem onClick={openReview} disabled={!canSend}>
               Review and send
             </MenuItem>
             <MenuItem onClick={save}>Save without sending</MenuItem>
@@ -651,27 +676,27 @@ export function TemplateEditor({ template }: { template: Template }) {
             {/* Why Send is disabled, said where the sender is working — not
                 only as a greyed-out button they have to hover to understand. */}
             <div className="mt-auto border-t border-border px-5 py-4 text-sm">
-              {untagged.length > 0 ? (
+              {untagged.length > 0 && fields.length > 0 ? (
                 <>
-                  <p className="text-warning">
+                  {/* Not a warning any more — this is what WILL happen, said
+                      before it happens. Sending is not blocked; Review and send
+                      copies these fields across on the way through. */}
+                  <p className="text-ink-muted">
                     {untagged.map((r) => recipientLabel(r, recipients.indexOf(r))).join(', ')}{' '}
-                    {untagged.length === 1 ? 'has' : 'have'} no fields yet — drop at least one for
-                    each signer before sending.
+                    {untagged.length === 1 ? 'has' : 'have'} no fields of their own, so{' '}
+                    {untagged.length === 1 ? 'they get' : 'they each get'} a copy of these when you
+                    send. Place fields for {untagged.length === 1 ? 'them' : 'each of them'} instead
+                    if they should sign somewhere different.
                   </p>
-                  {/* The fix, offered where the problem is stated. Retagging by
-                      hand is the same work repeated, and this is the point at
-                      which a sender is stuck looking at a disabled button. */}
-                  {fields.length > 0 && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-3 w-full"
-                      onClick={copyFieldsToEverySigner}
-                    >
-                      <Copy className="h-4 w-4" />
-                      Give {untagged.length === 1 ? 'them' : 'them all'} the same fields
-                    </Button>
-                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={copyFieldsToEverySigner}
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy them across now
+                  </Button>
                 </>
               ) : fields.length === 0 ? (
                 <p className="text-ink-muted">Drag a field from above onto the document.</p>
