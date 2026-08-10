@@ -13,6 +13,7 @@
   "dependencies": {
     "@clerk/nextjs": "7.6.1",
     "@docflow/contracts": "workspace:*",
+    "@vercel/analytics": "^2.0.1",
     "lucide-react": "1.27.0",
     "next": "16.2.11",
     "pdfjs-dist": "6.1.200",
