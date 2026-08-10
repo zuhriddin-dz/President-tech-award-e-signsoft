@@ -46,18 +46,36 @@ export const EMAIL_THEME = {
  * Email is the one surface where our SVG cannot go: Outlook's Word engine
  * ignores inline SVG, and Gmail refuses `data:` URIs in <img src>. Hosting a
  * PNG would work but ties every email we have ever sent to a URL that must
- * stay alive forever.
+ * stay alive forever, and images are blocked by default in most clients — a
+ * box always draws.
  *
- * So this is a deliberate SIMPLIFICATION, not the real mark: the logo's
- * shield curves and corner fold cannot be drawn in email-safe CSS, so we keep
- * only what survives — the brand's pink shield behind the navy document, in
- * the right stacking order and the right two colours. Anyone who has seen the
- * real mark recognises it; nobody is misled about what it is. Outlook squares
- * off the border-radius, which costs the rounded corners and nothing else.
+ * So this is a SIMPLIFICATION, but it should still read as our mark. Two
+ * things it previously got wrong:
+ *
+ *  - the shield was a perfect circle (13px radius on a 26px box). A circle
+ *    reads as a dot, not a shield. It now tapers at the bottom, which is the
+ *    silhouette people actually recognise.
+ *
+ *  - the two shapes were MIRRORED. In the real mark the document sits at the
+ *    bottom-LEFT with the shield behind it to the top-RIGHT; the email had
+ *    the shield left and the document down-right.
+ *
+ * Order matters and is load-bearing: the shield is emitted first so the
+ * document paints over it, which is the real mark's stacking. Outlook squares
+ * off every border-radius, so it degrades to two offset rectangles in the
+ * right colours and the right arrangement — still legible as the same object.
  */
 function emailMark(): string {
-  const shield = `display:inline-block;width:26px;height:26px;border-radius:13px 13px 13px 13px;background:${LOGO.shield};vertical-align:middle`;
-  const doc = `display:inline-block;width:20px;height:26px;border-radius:3px;background:${LOGO.document};vertical-align:middle;margin-left:-13px;margin-top:8px`;
+  // Elliptical radii: square-ish top, tapering bottom — a shield, not a dot.
+  const shield =
+    `display:inline-block;width:24px;height:24px;` +
+    `border-radius:4px 4px 46% 46% / 4px 4px 62% 62%;` +
+    `background:${LOGO.shield};vertical-align:middle;margin-left:9px`;
+  // Pulled back left and down: bottom-left of the lockup, over the shield.
+  const doc =
+    `display:inline-block;width:22px;height:24px;border-radius:3px;` +
+    `background:${LOGO.document};vertical-align:middle;` +
+    `margin-left:-13px;margin-top:9px`;
   return `<span style="${shield}"></span><span style="${doc}"></span>`;
 }
 
