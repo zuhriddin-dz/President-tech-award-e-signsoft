@@ -31,6 +31,14 @@ const CTA = 'bg-brand-link hover:bg-brand-hover';
 const CTA_ON_HERO = `${CTA} ring-1 ring-hero-glow`;
 
 /**
+ * Secondary actions on the hero. An outline rather than a fill so the one
+ * primary CTA keeps its weight — white at 40% sits at roughly 4:1 against the
+ * panel, so the control still reads as a shape without competing.
+ */
+const GHOST_ON_HERO =
+  'inline-flex h-12 items-center gap-2 rounded-md px-6 text-[15px] font-semibold text-white ring-1 ring-white/40 transition-colors hover:bg-white/10';
+
+/**
  * Public landing page — the first thing a logged-out visitor sees. It explains
  * the problem we solve, how the signing is secure, how documents are managed
  * end to end, and why to choose E-SIGNSOFT over paperwork. The CTA leads into the
@@ -95,11 +103,20 @@ export default async function LandingPage() {
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             {userId ? (
-              <Link href="/home">
-                <Button variant="primary" size="lg" className={CTA_ON_HERO}>
-                  Go to your dashboard
-                </Button>
-              </Link>
+              <>
+                <Link href="/home">
+                  <Button variant="primary" size="lg" className={CTA_ON_HERO}>
+                    Go to your dashboard
+                  </Button>
+                </Link>
+                {/* Top-level, not buried in the demo: checking a document is a
+                    real destination, and the visitor most likely to want it is
+                    one who arrived holding a file rather than looking to buy. */}
+                <Link href="/verify" className={GHOST_ON_HERO}>
+                  <ShieldCheck className="h-4 w-4" />
+                  Check a real document
+                </Link>
+              </>
             ) : (
               <>
                 <Link href="/sign-up">
@@ -108,10 +125,12 @@ export default async function LandingPage() {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
-                <Link href="/sign-in">
-                  <span className="inline-flex h-12 items-center rounded-md px-6 text-[15px] font-semibold text-white ring-1 ring-white/40 transition-colors hover:bg-white/10">
-                    Sign in
-                  </span>
+                <Link href="/verify" className={GHOST_ON_HERO}>
+                  <ShieldCheck className="h-4 w-4" />
+                  Check a real document
+                </Link>
+                <Link href="/sign-in" className={GHOST_ON_HERO}>
+                  Sign in
                 </Link>
               </>
             )}

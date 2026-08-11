@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { CircleCheck, CircleX, RotateCcw, Wand2 } from 'lucide-react';
 
 /**
@@ -19,9 +18,9 @@ import { CircleCheck, CircleX, RotateCcw, Wand2 } from 'lucide-react';
  *
  * Client-side by design. It touches no API, no database and no production row,
  * so it cannot break because an envelope was deleted or a service was slow —
- * the one thing worse than a boring hero is a broken one during a demo. The
- * link out to /verify is where a real signed document gets checked against the
- * real seal.
+ * the one thing worse than a boring hero is a broken one during a demo.
+ * Checking a REAL signed document against the real seal is /verify, reached
+ * from the button beside the main call to action.
  */
 const CONTRACT = `SERVICE AGREEMENT
 
@@ -66,6 +65,10 @@ export function HeroProof() {
     return -1;
   }, []);
   const firstDiff = sealed && current ? differsAt(sealed, current) : -1;
+  const changedChars =
+    sealed && current
+      ? sealed.split('').reduce((n, c, i) => (c === current[i] ? n : n + 1), 0)
+      : 0;
 
   return (
     <div className="mx-auto w-full max-w-xl overflow-hidden rounded-xl border border-white/15 bg-white/[0.04] text-left backdrop-blur">
@@ -153,15 +156,14 @@ export function HeroProof() {
             Put it back
           </button>
         )}
+        {/* No link out to /verify here any more — it is a button directly
+            above, and two routes to the same page a screen apart reads as
+            indecision. This space says what just happened instead. */}
         <span className="text-xs text-white/45">
-          {tampered ? 'The fee changed. So did every digit after it.' : 'Or edit the text yourself.'}
+          {tampered
+            ? `One edit — and ${changedChars} of the 64 characters below it changed.`
+            : 'Or edit the text yourself.'}
         </span>
-        <Link
-          href="/verify"
-          className="ml-auto text-xs font-semibold text-hero-glow underline underline-offset-2 hover:text-white"
-        >
-          Check a real document →
-        </Link>
       </div>
     </div>
   );
