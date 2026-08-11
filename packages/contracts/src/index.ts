@@ -54,6 +54,8 @@ export const API_PATHS = {
   signatureRequests: '/signature-requests',
   folders: '/folders',
   onboardingPersonal: '/onboarding/personal',
+  /** Public, unauthenticated: verify a document you hold by its fingerprint. */
+  verify: '/verify',
 } as const;
 
 // ── Folders ─────────────────────────────────────────────────────────────────
@@ -230,6 +232,49 @@ export const VerifyResultSchema = z.object({
   checkedAt: z.iso.datetime(),
 });
 export type VerifyResult = z.infer<typeof VerifyResultSchema>;
+
+/**
+ * PUBLIC verification: the same proof, for someone with no account.
+ *
+ * The check above is for the sender — it re-hashes the copy in OUR storage.
+ * This one is for whoever is holding the file: they hash their own bytes and
+ * ask whether that fingerprint belongs to something we sealed. It is the door
+ * that makes "anyone can verify, without trusting us" true rather than
+ * merely architectural.
+ *
+ * A hash, never the file. The document is fingerprinted in the browser and
+ * only the digest is sent, so a contract nobody has agreed to share with us
+ * never leaves the machine it is on.
+ */
+export const PublicVerifyRequestSchema = z.object({
+  /** Lowercase SHA-256 hex of the caller's own copy. */
+  documentHash: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/, 'expected a lowercase SHA-256 hex digest'),
+});
+export type PublicVerifyRequest = z.infer<typeof PublicVerifyRequestSchema>;
+
+/**
+ * Deliberately thin. A hash proves nothing about possession — someone could
+ * have read one off a certificate — so a successful lookup discloses only
+ * that the document exists and when it was sealed. No name, no signers, no
+ * workspace: a caller learns whether the file they hold is intact, which is
+ * the entire question, and nothing else about anybody's business.
+ *
+ * `verified: false` covers both "never sealed here" and "altered since", and
+ * that is not a gap. Change one byte and the fingerprint changes, so there is
+ * no row to find — the two cases are indistinguishable by construction, and
+ * the answer a holder needs is the same either way.
+ */
+export const PublicVerifyResultSchema = z.object({
+  verified: z.boolean(),
+  /** When the envelope completed. Null when nothing matched. */
+  sealedAt: z.iso.datetime().nullable(),
+  /** Which key in the ring signed it, for a reader checking by hand. */
+  sealKid: z.string().nullable(),
+  checkedAt: z.iso.datetime(),
+});
+export type PublicVerifyResult = z.infer<typeof PublicVerifyResultSchema>;
 
 // ── Templates & field layout ────────────────────────────────────────────────
 

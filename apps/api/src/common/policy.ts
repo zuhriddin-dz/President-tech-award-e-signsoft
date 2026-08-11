@@ -1,6 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   SetMetadata,
@@ -21,6 +23,9 @@ export const POLICY_KEY = 'docflow:policy';
 /**
  * Every route MUST declare a policy — the guard denies anything undeclared.
  * 'public'     — no auth at all (health).
+ * 'public-verify' — open to anyone, but per-IP throttled: the verification
+ *                surface, where a caller proves nothing except that they
+ *                already hold the document's fingerprint.
  * 'session'    — verified Clerk session, NO workspace required (onboarding).
  * 'sign-relay' — the public signing surface: NOT Clerk. Gated by the narrow
  *                relay secret (only apps/sign holds it); the token in the URL
@@ -30,6 +35,7 @@ export const POLICY_KEY = 'docflow:policy';
  */
 export type PolicyName =
   | 'public'
+  | 'public-verify'
   | 'session'
   | 'sign-relay'
   | 'viewer'
@@ -48,6 +54,17 @@ function relaySecretOk(header: string | undefined): boolean {
 // for a real signer (resolve + document + consent + submit is ~4 calls) while
 // shedding floods that would otherwise each cost a token-resolution DB query.
 const SIGN_RATE_LIMITER = new SlidingWindowRateLimiter(60, 60_000);
+
+/**
+ * Public verification is open to the whole internet with no credential at all,
+ * so it gets its own, tighter budget. A person checking a document does it
+ * once or twice; 20/minute is far more than that and still cheap to serve,
+ * since each call is one indexed lookup and one signature check.
+ *
+ * Separate from SIGN_RATE_LIMITER on purpose: a flood of verification attempts
+ * must not consume the allowance a real signer needs to finish signing.
+ */
+const VERIFY_RATE_LIMITER = new SlidingWindowRateLimiter(20, 60_000);
 
 const MIN_ROLE = {
   viewer: 'VIEWER',
@@ -75,6 +92,21 @@ export class PolicyGuard implements CanActivate {
     // Default deny: a route someone forgot to classify is a closed door.
     if (policy === undefined) throw new ForbiddenException();
     if (policy === 'public') return true;
+
+    // Open to anyone, but not unlimited. Unlike the signing surface this is not
+    // an oracle to protect — a caller must already hold the document to know
+    // its fingerprint — so over-limit is an honest 429 rather than a 404.
+    if (policy === 'public-verify') {
+      const req = context.switchToHttp().getRequest<Request>();
+      const ip =
+        (req.headers['x-client-ip'] as string | undefined) ??
+        (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
+        'unknown';
+      if (!VERIFY_RATE_LIMITER.allow(ip, Date.now())) {
+        throw new HttpException('Too many verification attempts.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      return true;
+    }
 
     // The public signing surface: authenticated by the relay secret, not Clerk.
     // A bad/absent secret is a uniform 404 (the signing surface is never an

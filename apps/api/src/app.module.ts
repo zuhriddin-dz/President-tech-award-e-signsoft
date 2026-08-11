@@ -7,6 +7,8 @@ import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { PolicyGuard } from './common/policy.js';
 import { env } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
+import { VerifyController } from './modules/verify/verify.controller.js';
+import { VerifyService } from './modules/verify/verify.service.js';
 import { DocumentsController } from './modules/documents/documents.controller.js';
 import { DocumentsService } from './modules/documents/documents.service.js';
 import { TemplatesController } from './modules/templates/templates.controller.js';
@@ -60,6 +62,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     SignatureRequestsController,
     FoldersController,
     SigningController,
+    VerifyController,
   ],
   providers: [
     ClerkService,
@@ -75,6 +78,7 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     SigningTokenResolver,
     QueueService,
     SealProvider,
+    VerifyService,
     // Global default-deny: every route must carry @Policy() or it is refused.
     { provide: APP_GUARD, useClass: PolicyGuard },
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

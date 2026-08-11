@@ -10,6 +10,12 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/terms',
   '/privacy',
+  // Verification is public on purpose. Evidence that can only be checked by
+  // someone with an account here is not evidence — the person who most needs
+  // to check a signed document is the counterparty who received it, and they
+  // have no reason to hold an account with us.
+  '/verify',
+  '/api/verify',
 ]);
 
 // Everything except the auth pages requires a session. The BFF /api routes

@@ -241,6 +241,11 @@ model SignatureRequest {
   sealKid        String? @map("seal_kid")
 
   @@index([tenantId, status, sentAt])
+  // Public verification looks a sealed document up by its own fingerprint —
+  // the one thing a stranger holding the file can compute. Declared here so
+  // Prisma stops reporting drift; the migration creates it PARTIAL (sealed
+  // rows only), which Prisma cannot express.
+  @@index([documentHash])
   @@map("signature_requests")
 }
 
