@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { CircleCheck, CircleX, RotateCcw, Wand2 } from 'lucide-react';
 
 /**
@@ -20,7 +21,8 @@ import { CircleCheck, CircleX, RotateCcw, Wand2 } from 'lucide-react';
  * so it cannot break because an envelope was deleted or a service was slow —
  * the one thing worse than a boring hero is a broken one during a demo.
  * Checking a REAL signed document against the real seal is /verify, reached
- * from the button beside the main call to action.
+ * both from the button beside the main call to action and from this panel's
+ * own footer — the second catches someone at the moment the demo lands.
  */
 const CONTRACT = `SERVICE AGREEMENT
 
@@ -156,14 +158,20 @@ export function HeroProof() {
             Put it back
           </button>
         )}
-        {/* No link out to /verify here any more — it is a button directly
-            above, and two routes to the same page a screen apart reads as
-            indecision. This space says what just happened instead. */}
         <span className="text-xs text-white/45">
           {tampered
             ? `One edit — and ${changedChars} of the 64 characters below it changed.`
             : 'Or edit the text yourself.'}
         </span>
+        {/* Also a button beside the main CTA, and the repetition is deliberate:
+            this one catches the visitor at the moment the demo has just landed,
+            which is when someone holding a real document decides to try it. */}
+        <Link
+          href="/verify"
+          className="ml-auto text-xs font-semibold text-hero-glow underline underline-offset-2 hover:text-white"
+        >
+          Check with a real file →
+        </Link>
       </div>
     </div>
   );
