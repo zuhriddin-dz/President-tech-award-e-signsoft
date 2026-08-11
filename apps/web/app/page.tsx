@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/primitives';
+import { HeroProof } from './hero-proof';
 
 /**
  * The call-to-action fill. brand-link rather than brand: at CTA size the label
@@ -89,8 +90,8 @@ export default async function LandingPage() {
             Send, sign, and prove every document — without the paperwork
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-white/80">
-            E-SIGNSOFT turns contracts, NDAs, onboarding and HR forms into secure, legally-defensible
-            e-signatures — with a tamper-evident certificate on every one.
+            Every document you send comes back sealed. Anyone holding it can check that it has not
+            changed by a single byte — including the person you sent it to, without an account.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             {userId ? (
@@ -118,6 +119,16 @@ export default async function LandingPage() {
           <p className="mt-5 text-sm text-white/60">
             No credit card. Signers never need an account.
           </p>
+
+          {/* Not a screenshot and not a video — the real thing, hashing in the
+              browser. Someone who breaks it themselves in the first five
+              seconds does not need the rest of the page to believe us. */}
+          <div className="mt-14">
+            <p className="mb-4 text-sm font-semibold tracking-wide text-white/60 uppercase">
+              Try it — change one number
+            </p>
+            <HeroProof />
+          </div>
         </div>
       </section>
 
