@@ -1,5 +1,8 @@
 import Link from 'next/link';
 import { Mark } from '@/components/brand/logo';
+import { messages } from '@/lib/i18n/locale';
+import { getLocale } from '@/lib/i18n/server';
+import { LanguageSwitcher } from './language-switcher';
 import { auth } from '@clerk/nextjs/server';
 import {
   ArrowRight,
@@ -46,6 +49,11 @@ const GHOST_ON_HERO =
  */
 export default async function LandingPage() {
   const { userId } = await auth();
+  // The landing page is the ONLY translated surface. Everything past sign-up —
+  // the editor, the signing ceremony, every email, the certificate — is
+  // English, so the switcher deliberately does not follow the visitor in.
+  const locale = await getLocale();
+  const t = messages(locale);
 
   return (
     <div className="flex min-h-screen flex-col bg-surface">
@@ -57,30 +65,31 @@ export default async function LandingPage() {
           </Link>
           <nav className="hidden gap-6 text-sm font-medium text-ink-muted md:flex">
             <a href="#problem" className="hover:text-ink">
-              Why E-SIGNSOFT
+              {t.nav.why}
             </a>
             <a href="#how" className="hover:text-ink">
-              How it works
+              {t.nav.how}
             </a>
             <a href="#security" className="hover:text-ink">
-              Security
+              {t.nav.security}
             </a>
             <a href="#compare" className="hover:text-ink">
-              Compare
+              {t.nav.compare}
             </a>
           </nav>
           <div className="ml-auto flex items-center gap-3">
+            <LanguageSwitcher current={locale} />
             {userId ? (
               <Link href="/home">
-                <Button variant="primary" className={CTA}>Go to E-SIGNSOFT</Button>
+                <Button variant="primary" className={CTA}>{t.header.goToApp}</Button>
               </Link>
             ) : (
               <>
                 <Link href="/sign-in" className="text-sm font-medium text-ink hover:text-brand">
-                  Sign in
+                  {t.header.signIn}
                 </Link>
                 <Link href="/sign-up">
-                  <Button variant="primary" className={CTA}>Get started free</Button>
+                  <Button variant="primary" className={CTA}>{t.header.getStarted}</Button>
                 </Link>
               </>
             )}
@@ -92,21 +101,20 @@ export default async function LandingPage() {
       <section className="bg-gradient-to-br from-hero-from to-hero-to">
         <div className="mx-auto max-w-5xl px-6 py-24 text-center">
           <p className="text-sm font-semibold tracking-wide text-white/70 uppercase">
-            Documents that move themselves
+            {t.hero.eyebrow}
           </p>
           <h1 className="mx-auto mt-4 max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-6xl">
-            Send, sign, and prove every document — without the paperwork
+            {t.hero.title}
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-white/80">
-            Every document you send comes back sealed. Anyone holding it can check that it has not
-            changed by a single byte — including the person you sent it to, without an account.
+            {t.hero.subtitle}
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             {userId ? (
               <>
                 <Link href="/home">
                   <Button variant="primary" size="lg" className={CTA_ON_HERO}>
-                    Go to your dashboard
+                    {t.hero.goToDashboard}
                   </Button>
                 </Link>
                 {/* Top-level, not buried in the demo: checking a document is a
@@ -114,29 +122,29 @@ export default async function LandingPage() {
                     one who arrived holding a file rather than looking to buy. */}
                 <Link href="/verify" className={GHOST_ON_HERO}>
                   <ShieldCheck className="h-4 w-4" />
-                  Check a real document
+                  {t.hero.checkDocument}
                 </Link>
               </>
             ) : (
               <>
                 <Link href="/sign-up">
                   <Button variant="primary" size="lg" className={CTA_ON_HERO}>
-                    Get started free
+                    {t.hero.getStarted}
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
                 <Link href="/verify" className={GHOST_ON_HERO}>
                   <ShieldCheck className="h-4 w-4" />
-                  Check a real document
+                  {t.hero.checkDocument}
                 </Link>
                 <Link href="/sign-in" className={GHOST_ON_HERO}>
-                  Sign in
+                  {t.hero.signIn}
                 </Link>
               </>
             )}
           </div>
           <p className="mt-5 text-sm text-white/60">
-            No credit card. Signers never need an account.
+            {t.hero.noCreditCard}
           </p>
 
           {/* Not a screenshot and not a video — the real thing, hashing in the
@@ -144,34 +152,30 @@ export default async function LandingPage() {
               seconds does not need the rest of the page to believe us. */}
           <div className="mt-14">
             <p className="mb-4 text-sm font-semibold tracking-wide text-white/60 uppercase">
-              Try it — change one number
+              {t.hero.tryIt}
             </p>
-            <HeroProof />
+            {/*
+              `key` is load-bearing, not decoration. The demo seeds React state
+              from the contract text, and switching language re-renders this
+              component WITHOUT resetting that state — every label flipped to
+              the new language while the document in the textarea stayed in the
+              old one. Keying by locale gives it a fresh instance instead, so
+              the document, its recorded hash and any edits all reset together.
+            */}
+            <HeroProof key={locale} locale={locale} />
           </div>
         </div>
       </section>
 
       {/* The problem */}
       <section id="problem" className="mx-auto max-w-6xl px-6 py-20">
-        <h2 className="text-center text-3xl font-semibold text-ink">Paperwork is slow and risky</h2>
+        <h2 className="text-center text-3xl font-semibold text-ink">{t.problem.heading}</h2>
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-3">
           {(
             [
-              [
-                Clock,
-                'Print, sign, scan, chase',
-                'Every signature is a round-trip of emails, printers and reminders. Deals wait on paper.',
-              ],
-              [
-                FileSearch,
-                'No proof it wasn’t changed',
-                'A scanned PDF can be altered and nobody can tell. Disputes come down to “trust me”.',
-              ],
-              [
-                X,
-                'Nothing is organised',
-                'Signed files scatter across inboxes and drives. Finding one — or knowing its status — is a hunt.',
-              ],
+              [Clock, ...t.problem.chase],
+              [FileSearch, ...t.problem.noProof],
+              [X, ...t.problem.scattered],
             ] as const
           ).map(([Icon, title, body]) => (
             <div key={title} className="rounded-xl border border-border bg-surface p-6">
@@ -188,28 +192,14 @@ export default async function LandingPage() {
       {/* How it works */}
       <section id="how" className="border-y border-border bg-surface-muted">
         <div className="mx-auto max-w-6xl px-6 py-20">
-          <h2 className="text-center text-3xl font-semibold text-ink">
-            Every document, managed end to end
-          </h2>
+          <h2 className="text-center text-3xl font-semibold text-ink">{t.how.heading}</h2>
           <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {(
               [
-                [Upload, '1 · Upload', 'Drop in any PDF and it becomes a reusable template.'],
-                [
-                  FileSignature,
-                  '2 · Tag',
-                  'Place signature, date, name and 14 more field types by drag-and-drop — per recipient.',
-                ],
-                [
-                  ArrowRight,
-                  '3 · Send',
-                  'Email a secure, single-use signing link. No account needed to sign.',
-                ],
-                [
-                  ShieldCheck,
-                  '4 · Prove',
-                  'Get the signed file plus a Certificate of Completion with a cryptographic seal.',
-                ],
+                [Upload, ...t.how.upload],
+                [FileSignature, ...t.how.tag],
+                [ArrowRight, ...t.how.send],
+                [ShieldCheck, ...t.how.prove],
               ] as const
             ).map(([Icon, title, body]) => (
               <div key={title} className="rounded-xl border border-border bg-surface p-6">
@@ -226,33 +216,17 @@ export default async function LandingPage() {
 
       {/* Security */}
       <section id="security" className="mx-auto max-w-6xl px-6 py-20">
-        <h2 className="text-center text-3xl font-semibold text-ink">Security is the product</h2>
+        <h2 className="text-center text-3xl font-semibold text-ink">{t.security.heading}</h2>
         <p className="mx-auto mt-3 max-w-2xl text-center text-ink-muted">
-          Signing is only worth something if it holds up. E-SIGNSOFT is built so it does.
+          {t.security.subheading}
         </p>
         <div className="mt-10 grid grid-cols-1 gap-5 sm:grid-cols-2">
           {(
             [
-              [
-                ShieldCheck,
-                'Tamper-evident by design',
-                'Every signed document is fingerprinted (SHA-256) and sealed with an Ed25519 signature bound to that document. Change one byte and verification fails — and you can run that check yourself, any time.',
-              ],
-              [
-                Lock,
-                'Isolated by the database itself',
-                'Your workspace’s data is walled off at the database layer, not just in application code — so a bug in our code can never leak it to another customer.',
-              ],
-              [
-                FileSignature,
-                'A hardened signing surface',
-                'Signing links are single-use, expiring, and stored only as hashes. The public signing app holds no keys and no database; it can forward a fixed set of requests and nothing else.',
-              ],
-              [
-                Scale,
-                'Legally aligned',
-                'Consent is recorded before any field can be filled, and the full audit trail — opened, agreed, signed, from where — follows the ESIGN/UETA model for remote electronic signatures.',
-              ],
+              [ShieldCheck, ...t.security.tamper],
+              [Lock, ...t.security.isolated],
+              [FileSignature, ...t.security.surface],
+              [Scale, ...t.security.legal],
             ] as const
           ).map(([Icon, title, body]) => (
             <div key={title} className="flex gap-4 rounded-xl border border-border bg-surface p-6">
@@ -271,25 +245,25 @@ export default async function LandingPage() {
       {/* Compare */}
       <section id="compare" className="border-y border-border bg-surface-muted">
         <div className="mx-auto max-w-3xl px-6 py-20">
-          <h2 className="text-center text-3xl font-semibold text-ink">E-SIGNSOFT vs. paperwork</h2>
+          <h2 className="text-center text-3xl font-semibold text-ink">{t.compare.heading}</h2>
           <div className="mt-10 overflow-hidden rounded-xl border border-border bg-surface">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
                   <th className="px-5 py-3 font-medium text-ink-muted">&nbsp;</th>
-                  <th className="px-5 py-3 font-medium text-ink-muted">Paper / scans</th>
+                  <th className="px-5 py-3 font-medium text-ink-muted">{t.compare.columnPaper}</th>
                   <th className="px-5 py-3 font-semibold text-brand">E-SIGNSOFT</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border text-ink">
                 {(
                   [
-                    ['Turnaround', 'Days', 'Minutes'],
-                    ['Proof of integrity', 'None', 'Cryptographic seal'],
-                    ['Audit trail', 'Manual', 'Automatic'],
-                    ['Find a signed doc', 'Search inboxes', 'One dashboard'],
-                    ['Multi-party signing', 'Chase each person', 'Routed automatically'],
-                    ['Cost per signature', 'Print + postage', 'Free to start'],
+                    t.compare.turnaround,
+                    t.compare.integrity,
+                    t.compare.audit,
+                    t.compare.find,
+                    t.compare.multiParty,
+                    t.compare.cost,
                   ] as const
                 ).map(([label, paper, us]) => (
                   <tr key={label}>
@@ -311,16 +285,13 @@ export default async function LandingPage() {
 
       {/* Final CTA */}
       <section className="mx-auto max-w-5xl px-6 py-24 text-center">
-        <h2 className="text-3xl font-semibold text-ink">Start in a minute</h2>
-        <p className="mx-auto mt-3 max-w-xl text-ink-muted">
-          Choose a personal account or set up a company workspace — you pick at sign-up, and it
-          decides who else can see your agreements.
-        </p>
+        <h2 className="text-3xl font-semibold text-ink">{t.finalCta.heading}</h2>
+        <p className="mx-auto mt-3 max-w-xl text-ink-muted">{t.finalCta.body}</p>
         {!userId && (
           <div className="mt-8 flex items-center justify-center gap-3">
             <Link href="/sign-up">
               <Button variant="primary" size="lg" className={CTA}>
-                Get started free
+                {t.finalCta.getStarted}
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
@@ -334,7 +305,7 @@ export default async function LandingPage() {
             <Mark />
             E-SIGNSOFT
           </span>
-          <span>© {new Date().getFullYear()} E-SIGNSOFT — secure e-signature and document workflow</span>
+          <span>{t.footer.tagline(new Date().getFullYear())}</span>
         </div>
       </footer>
     </div>

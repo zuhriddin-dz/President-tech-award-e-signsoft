@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CircleCheck, CircleX, RotateCcw, Wand2 } from 'lucide-react';
+import { messages, type Locale } from '@/lib/i18n/locale';
 
 /**
  * The claim, running, above the fold.
@@ -24,16 +25,29 @@ import { CircleCheck, CircleX, RotateCcw, Wand2 } from 'lucide-react';
  * both from the button beside the main call to action and from this panel's
  * own footer — the second catches someone at the moment the demo lands.
  */
-const CONTRACT = `SERVICE AGREEMENT
+/**
+  * The figure the "change one number" button rewrites. Every translation of the
+  * contract must contain it VERBATIM — see the note on `proof.contract` in
+  * lib/i18n/en.ts. If a locale ever loses it, `tamper()` returns the text
+  * unchanged, the demo silently stops demonstrating anything, and nothing
+  * throws to tell us; hence the assertion in tamper() below.
+  */
+const TAMPER_FROM = '18,400,000';
+const TAMPER_TO = '1,400,000';
 
-Between:  Orbis Logistics LLC
-And:      Karimov Consulting
-
-1. Term. Twelve months from 1 September 2026.
-2. Fee.  18,400,000 so'm per month, payable in arrears.
-3. Notice. Either party may terminate on 60 days' notice.
-
-Signed electronically by both parties.`;
+/** The single character an attacker would most like to change. */
+function tamper(contract: string): string {
+  const out = contract.replace(TAMPER_FROM, TAMPER_TO);
+  if (out === contract && process.env.NODE_ENV !== 'production') {
+    // Loud in development, harmless in production: a broken demo button is
+    // worth a console error, not a white screen in front of a jury.
+    console.error(
+      `hero-proof: the contract copy no longer contains "${TAMPER_FROM}", so the ` +
+        'tamper button does nothing. Check the translations in lib/i18n.',
+    );
+  }
+  return out;
+}
 
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
@@ -42,18 +56,36 @@ async function sha256(text: string): Promise<string> {
     .join('');
 }
 
-/** The single character an attacker would most like to change. */
-const TAMPERED = CONTRACT.replace('18,400,000', '1,400,000');
+/**
+ * Takes the LOCALE, not the copy.
+ *
+ * Passing the catalogue slice straight down looks tidier and does not work:
+ * `proof.oneEdit` is a function, and React cannot serialise a function across
+ * the server→client boundary — the page dies at runtime with "Functions cannot
+ * be passed directly to Client Components". A locale is a plain string, so it
+ * crosses fine, and this component resolves its own copy on the client. That
+ * is also why lib/i18n/locale.ts holds no `next/headers` import: it has to be
+ * importable from here.
+ */
+export function HeroProof({ locale }: { locale: Locale }) {
+  const copy = messages(locale).proof;
+  const CONTRACT = copy.contract;
+  const TAMPERED = tamper(CONTRACT);
 
-export function HeroProof() {
   const [text, setText] = useState(CONTRACT);
   const [sealed, setSealed] = useState<string | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
 
   // The digest recorded "at signing" — the real hash of the untouched text.
+  //
+  // Mount-only, and that is safe ONLY because page.tsx keys this component by
+  // locale: a language change remounts it rather than re-rendering it, so
+  // `text` above is re-seeded from the new contract and this recomputes
+  // against it. Drop that key and the two silently drift apart — the labels
+  // change language while the document does not.
   useEffect(() => {
     void sha256(CONTRACT).then(setSealed);
-  }, []);
+  }, [CONTRACT]);
 
   useEffect(() => {
     void sha256(text).then(setCurrent);
@@ -86,14 +118,14 @@ export function HeroProof() {
           <CircleX className="h-5 w-5 shrink-0 text-white" />
         )}
         <span className="text-sm font-semibold">
-          {intact ? 'Signature verified — document unaltered' : 'Verification failed — document has changed'}
+          {intact ? copy.verdictIntact : copy.verdictChanged}
         </span>
       </div>
 
       {/* The document */}
       <div className="px-5 pt-4">
         <label htmlFor="hero-doc" className="text-[11px] font-semibold tracking-wider text-white/50 uppercase">
-          Signed document
+          {copy.signedDocument}
         </label>
         <textarea
           id="hero-doc"
@@ -101,7 +133,7 @@ export function HeroProof() {
           onChange={(e) => setText(e.target.value)}
           spellCheck={false}
           rows={9}
-          aria-label="Signed document — edit any character to see the fingerprint change"
+          aria-label={copy.docAria}
           className="mt-1.5 w-full resize-none rounded-md border border-white/10 bg-brand-darkest/60 p-3 font-mono text-[11.5px] leading-relaxed text-white/85 outline-none focus-visible:border-hero-glow"
         />
       </div>
@@ -109,11 +141,11 @@ export function HeroProof() {
       {/* Fingerprints */}
       <div className="px-5 pt-3 pb-4">
         <p className="text-[11px] font-semibold tracking-wider text-white/50 uppercase">
-          SHA-256 fingerprint
+          {copy.fingerprint}
         </p>
         <p className="mt-1 font-mono text-[11px] leading-relaxed break-all">
           {current === null ? (
-            <span className="text-white/40">computing…</span>
+            <span className="text-white/40">{copy.computing}</span>
           ) : (
             // Colour from the first differing character on: seeing exactly
             // where it diverges is the point — one edit, and nothing after it
@@ -132,7 +164,7 @@ export function HeroProof() {
         </p>
         {tampered && sealed && (
           <p className="mt-2 font-mono text-[11px] leading-relaxed break-all text-white/35">
-            recorded at signing: {sealed}
+            {copy.recordedAtSigning} {sealed}
           </p>
         )}
       </div>
@@ -146,7 +178,7 @@ export function HeroProof() {
             className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/[0.18]"
           >
             <Wand2 className="h-4 w-4" />
-            Change one number
+            {copy.changeOneNumber}
           </button>
         ) : (
           <button
@@ -155,13 +187,11 @@ export function HeroProof() {
             className="inline-flex items-center gap-2 rounded-md bg-white/10 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/[0.18]"
           >
             <RotateCcw className="h-4 w-4" />
-            Put it back
+            {copy.putItBack}
           </button>
         )}
         <span className="text-xs text-white/45">
-          {tampered
-            ? `One edit — and ${changedChars} of the 64 characters below it changed.`
-            : 'Or edit the text yourself.'}
+          {tampered ? copy.oneEdit(changedChars) : copy.orEditYourself}
         </span>
         {/* Also a button beside the main CTA, and the repetition is deliberate:
             this one catches the visitor at the moment the demo has just landed,
@@ -170,7 +200,7 @@ export function HeroProof() {
           href="/verify"
           className="ml-auto text-xs font-semibold text-hero-glow underline underline-offset-2 hover:text-white"
         >
-          Check with a real file →
+          {copy.checkWithRealFile}
         </Link>
       </div>
     </div>
