@@ -1,0 +1,78 @@
+# The public signing app (apps/sign), built for the single VM.
+#
+# Mirrors the API image's structure and its hard-won rules: build context is
+# the REPO ROOT because this is a pnpm workspace, and the workspace tree is
+# copied as ONE unit so pnpm's symlink farm survives.
+#
+# Paired with Dockerfile.sign.dockerignore — the root .dockerignore deliberately
+# excludes apps/sign source (the API image has no business carrying it), so this
+# image needs its own ignore rules or the build context arrives empty.
+#
+#   docker compose -f docker-compose.prod.yml build sign
+
+# ── deps ────────────────────────────────────────────────────────────────────
+FROM node:24-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /repo
+RUN corepack enable
+
+# Manifests first, so editing a page does not re-resolve the dependency tree.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/sign/package.json apps/sign/
+COPY apps/sign/package.json apps/sign/
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/crypto/package.json packages/crypto/
+COPY packages/db/package.json packages/db/
+
+# Filtered to this app's closure: NestJS, Prisma and pdf-lib belong to the API
+# image and have no reason to be here.
+RUN pnpm install --frozen-lockfile --filter @docflow/sign...
+
+# ── build ───────────────────────────────────────────────────────────────────
+FROM deps AS build
+WORKDIR /repo
+COPY . .
+
+# NEXT_PUBLIC_* is INLINED INTO THE CLIENT BUNDLE AT BUILD TIME, not read at
+# boot, so the one this app has must be a build ARG rather than a compose
+# `environment` entry — otherwise the "create your free account" link shown
+# after signing points at `undefined`.
+#
+# NOTE this app carries NO Clerk key, publishable or otherwise. It is reached
+# by strangers holding a link and is deliberately credential-poor: its only
+# secret is SIGN_RELAY_SECRET, read at runtime by the server, never bundled.
+ARG NEXT_PUBLIC_APP_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+
+RUN test -n "$NEXT_PUBLIC_APP_URL" \
+  || (echo "NEXT_PUBLIC_APP_URL build arg is empty — the post-signing account link would point at undefined" && exit 1)
+
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm turbo run build --filter=@docflow/sign
+
+# ── runtime ─────────────────────────────────────────────────────────────────
+FROM node:24-alpine AS runtime
+WORKDIR /repo
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3300
+ENV HOSTNAME=0.0.0.0
+
+RUN addgroup -S app && adduser -S app -G app
+
+# `standalone` already contains the traced node_modules, so nothing else is
+# copied from the build stage's dependency tree. Static assets and the public
+# directory are NOT traced — Next expects them beside the server, hence the
+# separate copies. (apps/sign has no public/ today; add a copy here if it gains
+# one, or the assets will 404 while the app itself boots fine.)
+COPY --from=build --chown=app:app /repo/apps/sign/.next/standalone ./
+COPY --from=build --chown=app:app /repo/apps/sign/.next/static ./apps/sign/.next/static
+
+USER app
+EXPOSE 3300
+
+# outputFileTracingRoot is the repo root, so the emitted server entrypoint
+# keeps its workspace-relative path.
+CMD ["node", "apps/sign/server.js"]

@@ -1,0 +1,79 @@
+# The dashboard app (apps/web), built for the single VM.
+#
+# Mirrors the API image's structure and its hard-won rules: build context is
+# the REPO ROOT because this is a pnpm workspace, and the workspace tree is
+# copied as ONE unit so pnpm's symlink farm survives.
+#
+# Paired with Dockerfile.web.dockerignore — the root .dockerignore deliberately
+# excludes apps/web source (the API image has no business carrying it), so this
+# image needs its own ignore rules or the build context arrives empty.
+#
+#   docker compose -f docker-compose.prod.yml build web
+
+# ── deps ────────────────────────────────────────────────────────────────────
+FROM node:24-alpine AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /repo
+RUN corepack enable
+
+# Manifests first, so editing a page does not re-resolve the dependency tree.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/web/package.json apps/web/
+COPY apps/sign/package.json apps/sign/
+COPY packages/config/package.json packages/config/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/crypto/package.json packages/crypto/
+COPY packages/db/package.json packages/db/
+
+# Filtered to this app's closure: NestJS, Prisma and pdf-lib belong to the API
+# image and have no reason to be here.
+RUN pnpm install --frozen-lockfile --filter @docflow/web...
+
+# ── build ───────────────────────────────────────────────────────────────────
+FROM deps AS build
+WORKDIR /repo
+COPY . .
+
+# NEXT_PUBLIC_* is INLINED INTO THE CLIENT BUNDLE AT BUILD TIME, not read at
+# boot. Passing the Clerk publishable key only in docker-compose `environment`
+# would produce an image whose browser bundle has `undefined` for it, and the
+# sign-in page would render blank with a 404 on /__clerk/* — the exact failure
+# this project already hit once on Vercel. So it is a build ARG, and
+# docker-compose passes it under `build.args`.
+#
+# It is a PUBLISHABLE key: designed to ship to browsers, safe in an image
+# layer. The secret key is NOT here — it is read at runtime by the server.
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+
+RUN test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" \
+  || (echo "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY build arg is empty — the client bundle would ship without Clerk" && exit 1)
+
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm turbo run build --filter=@docflow/web
+
+# ── runtime ─────────────────────────────────────────────────────────────────
+FROM node:24-alpine AS runtime
+WORKDIR /repo
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3200
+ENV HOSTNAME=0.0.0.0
+
+RUN addgroup -S app && adduser -S app -G app
+
+# `standalone` already contains the traced node_modules, so nothing else is
+# copied from the build stage's dependency tree. Static assets and the public
+# directory are NOT traced — Next expects them beside the server, hence the
+# separate copies. (apps/web has no public/ today; add a copy here if it gains
+# one, or the assets will 404 while the app itself boots fine.)
+COPY --from=build --chown=app:app /repo/apps/web/.next/standalone ./
+COPY --from=build --chown=app:app /repo/apps/web/.next/static ./apps/web/.next/static
+
+USER app
+EXPOSE 3200
+
+# outputFileTracingRoot is the repo root, so the emitted server entrypoint
+# keeps its workspace-relative path.
+CMD ["node", "apps/web/server.js"]

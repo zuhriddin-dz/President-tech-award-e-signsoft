@@ -1,0 +1,53 @@
+# Build context for Dockerfile.sign.
+#
+# The root .dockerignore excludes apps/web source, because the API image must
+# not carry it. BuildKit honours a per-Dockerfile ignore file — <name>.dockerignore
+# — which REPLACES the root one for this build, so the rules the API relies on
+# are restated here rather than inherited.
+node_modules
+**/node_modules
+
+# SECRETS. Never in an image layer.
+.env
+**/.env
+**/.env.local
+**/.env.*.local
+.env.deploy
+
+# Build output — the image builds its own.
+dist
+**/dist
+.next
+**/.next
+*.tsbuildinfo
+**/*.tsbuildinfo
+.turbo
+**/.turbo
+
+# The API's own source: this image runs the signing app, not the API. Its
+# package.json stays so pnpm can resolve the workspace against the lockfile.
+apps/api/*
+!apps/api/package.json
+apps/web/*
+!apps/web/package.json
+
+# Server-only workspace packages. apps/sign depends on @docflow/contracts only;
+# crypto and db belong to the API. Manifests kept for lockfile resolution.
+packages/crypto/*
+!packages/crypto/package.json
+packages/db/*
+!packages/db/package.json
+
+.git
+.github
+.vscode
+.idea
+*.log
+npm-debug.log*
+coverage
+**/coverage
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+**/*.md
+Caddyfile
