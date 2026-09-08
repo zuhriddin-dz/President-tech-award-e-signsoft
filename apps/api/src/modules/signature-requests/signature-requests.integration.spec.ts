@@ -9,6 +9,7 @@ import { PDFDocument } from 'pdf-lib';
 import { ClsServiceManager } from 'nestjs-cls';
 import { afterAll, describe, expect, it } from 'vitest';
 import { env } from '../../config/env.js';
+import { databaseUp, storageUp } from '../../test-support/live.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { StorageService } from '../../storage/storage.service.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
@@ -18,7 +19,13 @@ import { TemplatesService } from '../templates/templates.service.js';
 import { SealService, parseSealRing, sha256Hex } from '@docflow/crypto';
 import { SignatureRequestsService } from './signature-requests.service.js';
 
-const live = env.APP_DATABASE_URL.includes('neon.tech');
+// Needs BOTH a database and a real bucket: every test builds a template, which
+// uploads a PDF. The database half is a socket probe rather than a hostname
+// match (see src/test-support/live.ts); the storage half has no local stand-in,
+// so this suite still waits for R2. `assertSignersAreTagged` — the rule this
+// flow gained — is covered directly in signature-requests.spec.ts, which needs
+// neither and therefore runs everywhere.
+const live = storageUp(env.S3_ENDPOINT) && (await databaseUp(env.APP_DATABASE_URL));
 
 const prisma = new PrismaService();
 const cls = ClsServiceManager.getClsService();
@@ -47,8 +54,21 @@ const tenantB = randomUUID();
 function enter(tenant: string): void {
   context.enter({ userId: randomUUID(), clerkUserId: 'c', tenantId: tenant, role: 'MEMBER' });
 }
+/**
+ * Ensure the workspace exists. Idempotent because five separate tests seed the
+ * SAME tenant: a plain create let only the first one through and every test
+ * after it died on the unique index. That went unnoticed for as long as this
+ * suite gated itself off — it is exactly the class of rot a skipped test grows.
+ * The tenants policy keys on `id`, so this runs under the caller's own context.
+ */
 async function seed(id: string): Promise<void> {
-  await db.tx((tx) => tx.tenant.create({ data: { id, name: 'SR ' + id.slice(0, 6) } }));
+  await db.tx((tx) =>
+    tx.tenant.upsert({
+      where: { id },
+      create: { id, name: 'SR ' + id.slice(0, 6) },
+      update: {},
+    }),
+  );
 }
 async function templateWithField(): Promise<string> {
   const pdf = await PDFDocument.create();

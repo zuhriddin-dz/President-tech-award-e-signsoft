@@ -14,7 +14,8 @@ import type { Request } from 'express';
 import { roleSatisfies } from '../auth/claims.js';
 import { ClerkService } from '../auth/clerk.service.js';
 import { env } from '../config/env.js';
-import { SlidingWindowRateLimiter } from './rate-limit.js';
+import { QueueService } from '../queue/queue.service.js';
+import { SharedSlidingWindow, SlidingWindowRateLimiter } from './rate-limit.js';
 import { TenantContext } from '../tenant/tenant-context.js';
 import { TenantSyncService } from '../tenant/tenant-sync.service.js';
 
@@ -43,11 +44,55 @@ export type PolicyName =
   | 'admin'
   | 'owner';
 
-function relaySecretOk(header: string | undefined): boolean {
-  if (!header) return false;
+/** Constant-time compare of a presented header against a configured secret. */
+function secretOk(header: string | undefined, expected: string | null): boolean {
+  if (!header || !expected) return false;
   const a = Buffer.from(header);
-  const b = Buffer.from(env.SIGN_RELAY_SECRET);
+  const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function relaySecretOk(header: string | undefined): boolean {
+  return secretOk(header, env.SIGN_RELAY_SECRET);
+}
+
+/**
+ * WHOSE ADDRESS IS THIS, REALLY.
+ *
+ * The API is on a public origin (api.esignsoft.uz), so any header a client can
+ * set is a value the client CHOOSES. Reading `x-client-ip` — or the leftmost
+ * entry of `x-forwarded-for`, which is the attacker-appendable end of the
+ * chain — turns a per-IP rate limit into a per-attacker-nonce rate limit, i.e.
+ * none at all.
+ *
+ * So there are two distinct notions here and they must not be conflated:
+ *
+ *   socketAddress()  — who actually opened the connection, resolved by Express
+ *     under `trust proxy 1` (main.ts). Never forgeable past the trusted hop.
+ *     This is what backstop limiting is keyed on.
+ *
+ *   trustedClientIp() — the ORIGINAL browser's address, which only a caller
+ *     that proves it is one of our own front ends may assert. That proof is a
+ *     shared secret; without it the header is ignored outright.
+ *
+ * The front ends (apps/web's /api/verify hop, apps/sign's relay) sit between
+ * the browser and this API, so their socket address is the same for everybody
+ * — which is why the asserted value is worth having at all, and why it has to
+ * be authenticated before it is believed.
+ */
+function socketAddress(req: Request): string {
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
+}
+
+function trustedClientIp(req: Request, trusted: boolean): string | null {
+  if (!trusted) return null;
+  const supplied = req.headers['x-client-ip'];
+  if (typeof supplied !== 'string') return null;
+  const value = supplied.trim();
+  // Bounded and single-valued: a header is a claim, and an unbounded one is a
+  // memory key an attacker gets to choose the size of.
+  if (!value || value.length > 64 || value.includes(',')) return null;
+  return value;
 }
 
 // Per-IP limit on the public signing surface: 60 requests / minute is generous
@@ -66,6 +111,27 @@ const SIGN_RATE_LIMITER = new SlidingWindowRateLimiter(60, 60_000);
  */
 const VERIFY_RATE_LIMITER = new SlidingWindowRateLimiter(20, 60_000);
 
+/**
+ * The backstop, keyed by the SOCKET address rather than any asserted one.
+ *
+ * It exists because the per-browser budgets above can only be enforced on a
+ * value a front end vouches for, and a caller reaching this API directly
+ * vouches for nothing. Without it, "the header is ignored" would mean "there is
+ * no limit at all" for exactly the caller who deserves one most.
+ *
+ * The ceiling is deliberately far above the per-browser budgets, and the reason
+ * is a trap worth stating: EVERY legitimate request arrives from a front end,
+ * so all real traffic shares one or two addresses. A tight backstop would
+ * therefore throttle the whole product long before it throttled an attacker —
+ * a limit that fires on success. 100/second per source is a ceiling no
+ * legitimate single origin reaches at this stage, while still turning an
+ * unbounded flood into a bounded one. Raise it before it ever bites; do not
+ * lower it to "look stricter".
+ */
+export const SOURCE_MAX_PER_MINUTE = 6_000;
+const SIGN_SOURCE_LIMITER = new SlidingWindowRateLimiter(SOURCE_MAX_PER_MINUTE, 60_000);
+const VERIFY_SOURCE_LIMITER = new SlidingWindowRateLimiter(SOURCE_MAX_PER_MINUTE, 60_000);
+
 const MIN_ROLE = {
   viewer: 'VIEWER',
   member: 'MEMBER',
@@ -77,12 +143,42 @@ export const Policy = (name: PolicyName) => SetMetadata(POLICY_KEY, name);
 
 @Injectable()
 export class PolicyGuard implements CanActivate {
+  /**
+   * Shared windows over the same budgets. Each keeps its in-process limiter as
+   * the floor and adds a Redis view so the cap stays global across replicas;
+   * if Redis is unreachable the floor is the whole answer. Built here (not at
+   * module scope) because they need the queue's connection.
+   */
+  private readonly signWindow: SharedSlidingWindow;
+  private readonly signSourceWindow: SharedSlidingWindow;
+  private readonly verifyWindow: SharedSlidingWindow;
+  private readonly verifySourceWindow: SharedSlidingWindow;
+
   constructor(
     private readonly reflector: Reflector,
     private readonly clerk: ClerkService,
     private readonly sync: TenantSyncService,
     private readonly tenantContext: TenantContext,
-  ) {}
+    private readonly queue: QueueService,
+  ) {
+    const client = () => this.queue.rateLimitClient();
+    this.signWindow = new SharedSlidingWindow('sign', 60, 60_000, client, SIGN_RATE_LIMITER);
+    this.signSourceWindow = new SharedSlidingWindow(
+      'sign-src',
+      SOURCE_MAX_PER_MINUTE,
+      60_000,
+      client,
+      SIGN_SOURCE_LIMITER,
+    );
+    this.verifyWindow = new SharedSlidingWindow('verify', 20, 60_000, client, VERIFY_RATE_LIMITER);
+    this.verifySourceWindow = new SharedSlidingWindow(
+      'verify-src',
+      SOURCE_MAX_PER_MINUTE,
+      60_000,
+      client,
+      VERIFY_SOURCE_LIMITER,
+    );
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const policy = this.reflector.getAllAndOverride<PolicyName | undefined>(POLICY_KEY, [
@@ -98,11 +194,20 @@ export class PolicyGuard implements CanActivate {
     // its fingerprint — so over-limit is an honest 429 rather than a 404.
     if (policy === 'public-verify') {
       const req = context.switchToHttp().getRequest<Request>();
-      const ip =
-        (req.headers['x-client-ip'] as string | undefined) ??
-        (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
-        'unknown';
-      if (!VERIFY_RATE_LIMITER.allow(ip, Date.now())) {
+      const now = Date.now();
+      // The source budget applies to everyone, always: it is the only one a
+      // caller that reaches this API directly can be held to.
+      if (!(await this.verifySourceWindow.allow(socketAddress(req), now))) {
+        throw new HttpException('Too many verification attempts.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      // The per-browser budget applies on top, and only to a value our own BFF
+      // vouched for. Unsigned, the header is simply not read.
+      const vouched = secretOk(
+        req.headers['x-internal-auth'] as string | undefined,
+        env.VERIFY_RELAY_SECRET ?? null,
+      );
+      const client = trustedClientIp(req, vouched);
+      if (client && !(await this.verifyWindow.allow(client, now))) {
         throw new HttpException('Too many verification attempts.', HttpStatus.TOO_MANY_REQUESTS);
       }
       return true;
@@ -118,8 +223,16 @@ export class PolicyGuard implements CanActivate {
       }
       // Per-IP rate limit BEFORE the handler touches the DB — defense in depth
       // behind the sign app's own edge limiter. Over-limit is the same 404.
-      const ip = (req.headers['x-client-ip'] as string | undefined) ?? 'unknown';
-      if (!SIGN_RATE_LIMITER.allow(ip, Date.now())) {
+      //
+      // Holding the relay secret is what makes x-client-ip believable here, so
+      // the per-signer budget is keyed on it; the source budget still applies
+      // underneath, bounding a compromised relay too.
+      const now = Date.now();
+      if (!(await this.signSourceWindow.allow(socketAddress(req), now))) {
+        throw new NotFoundException('This signing link is not valid.');
+      }
+      const client = trustedClientIp(req, true);
+      if (client && !(await this.signWindow.allow(client, now))) {
         throw new NotFoundException('This signing link is not valid.');
       }
       return true;

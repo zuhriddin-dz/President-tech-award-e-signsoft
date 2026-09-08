@@ -6,10 +6,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { ClsServiceManager } from 'nestjs-cls';
 import { describe, expect, it } from 'vitest';
 import { env } from '../config/env.js';
+import { storageUp } from '../test-support/live.js';
 import { TenantContext } from '../tenant/tenant-context.js';
 import { StorageService } from './storage.service.js';
 
-const live = env.S3_ENDPOINT.includes('r2.cloudflarestorage.com');
+// Storage only: no local stand-in for R2 is wired up, so this stays a
+// capability check on the configured endpoint.
+const live = storageUp(env.S3_ENDPOINT);
 const cls = ClsServiceManager.getClsService();
 const context = new TenantContext(cls);
 const storage = new StorageService(context);

@@ -1,0 +1,76 @@
+# TLS and routing for the single-VM deployment.
+#
+# Caddy provisions and renews Let's Encrypt certificates automatically; the
+# only prerequisite is that each name below has an A record pointing at this
+# droplet BEFORE the container starts, or the ACME challenge fails and Caddy
+# retries in a loop.
+#
+# WHAT IS AND IS NOT PUBLISHED
+#
+# Only the two Next apps are exposed. The API, the worker and Redis have no
+# published ports at all — they are reachable only on the compose network, by
+# service name. That is a real reduction in attack surface compared with the
+# App Platform setup, where the API answered on the public internet: the
+# browser never talked to it directly even then (both apps proxy through their
+# own /api and /relay routes), so nothing is lost by closing it.
+#
+# CLIENT IP — this is evidence, not telemetry.
+#
+# The address recorded here ends up on a Certificate of Completion as proof of
+# where a document was signed. Caddy APPENDS the real peer address to
+# X-Forwarded-For, and apps/sign reads the RIGHTMOST entry of that header
+# (see clientIp() in apps/sign/app/relay/[...path]/route.ts), which is the hop
+# nearest us and the one a client cannot forge past.
+#
+# Do NOT set TRUSTED_CLIENT_IP_HEADER to x-forwarded-for. That path reads the
+# LEFTMOST entry, which is the appendable end — a signer could then choose the
+# address printed on their own evidence. Leave it unset; the default is right.
+
+{
+	# Where Let's Encrypt sends expiry warnings. Replace before first boot.
+	email {$ACME_EMAIL}
+
+	# Caddy's own access logs stay off stdout noise; container logs are capped
+	# by the compose logging driver.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+# ── The dashboard ───────────────────────────────────────────────────────────
+esignsoft.uz, www.esignsoft.uz {
+	encode zstd gzip
+
+	# HSTS, X-Frame-Options, X-Content-Type-Options and the CSP are set by the
+	# APP, not here — apps/web/lib/security-headers.ts and the sign app's
+	# middleware. Setting them in both places would emit duplicates, and a
+	# browser takes the FIRST Strict-Transport-Security it sees: a shorter
+	# max-age here would quietly downgrade the app's deliberate two-year
+	# policy. One owner per header.
+	header {
+		-Server
+	}
+
+	reverse_proxy web:3200 {
+		# Fail over to an error rather than hanging a browser on a dead app.
+		health_uri /
+		health_interval 30s
+		health_timeout 5s
+	}
+}
+
+# ── The public signing app ──────────────────────────────────────────────────
+sign.esignsoft.uz {
+	encode zstd gzip
+
+	# Same as above: the signing app sets its own HSTS and CSP in middleware.ts.
+	header {
+		-Server
+	}
+
+	reverse_proxy sign:3300 {
+		health_uri /
+		health_interval 30s
+		health_timeout 5s
+	}
+}

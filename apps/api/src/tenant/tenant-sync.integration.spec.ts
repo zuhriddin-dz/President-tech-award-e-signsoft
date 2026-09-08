@@ -6,12 +6,15 @@
 import { ClsServiceManager } from 'nestjs-cls';
 import { afterAll, describe, expect, it } from 'vitest';
 import { env } from '../config/env.js';
+import { databaseUp } from '../test-support/live.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TenantContext } from './tenant-context.js';
 import { TenantDb } from './tenant-db.js';
 import { TenantSyncService } from './tenant-sync.service.js';
 
-const live = env.APP_DATABASE_URL.includes('neon.tech');
+// A socket probe, not a hostname match: CI stands a Postgres up and this
+// suite must run there. See src/test-support/live.ts.
+const live = await databaseUp(env.APP_DATABASE_URL);
 const suffix = Date.now().toString(36);
 const clerkOrg = `org_itest_${suffix}`;
 const clerkUser = `user_itest_${suffix}`;

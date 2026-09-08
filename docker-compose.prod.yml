@@ -1,0 +1,201 @@
+# Everything E-SIGNSOFT runs, on one VM.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.vm up -d --build
+#
+# WHAT IS HERE:   caddy (TLS) · web · sign · api · worker · redis
+# WHAT IS NOT:    Postgres stays on Neon; object storage stays on Cloudflare
+#                 R2; auth stays with Clerk; email stays with Resend.
+#
+# This replaces DigitalOcean App Platform, Vercel AND Upstash. Redis moves
+# in-process here, which is the point: BullMQ polls continuously by design, and
+# a per-command hosted Redis bills for every one of those polls. On this box
+# the same traffic costs nothing.
+#
+# NOTHING NEEDS MIGRATING. Postgres and R2 do not move, and Redis holds only
+# in-flight jobs — so the cutover is "point DNS at the droplet", not a data
+# migration. Anything still queued in Upstash at cutover is simply not carried
+# over; drain it first if that matters (see VM-DEPLOY.md).
+
+name: esignsoft
+
+x-logging: &logging
+  # Docker's default json-file driver has NO cap. On a small droplet an app
+  # that logs steadily will fill the disk and take Postgres connections,
+  # Caddy's certificates and the queue down with it. Every service gets this.
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  # ── TLS termination and the only public surface ───────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp' # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME account keys. Losing this volume means
+      # re-issuing every certificate, and Let's Encrypt rate-limits that.
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env.vm}
+    depends_on:
+      - web
+      - sign
+    logging: *logging
+
+  # ── The dashboard ─────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        # Build-time, not runtime: see the note in Dockerfile.web. Changing
+        # this value requires a REBUILD, not a restart.
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:?}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Over the compose network, not the public internet: the request never
+      # leaves the box, so there is no TLS handshake and no hairpin through
+      # Caddy on every dashboard page load.
+      API_ORIGIN: http://api:5100
+      VERIFY_RELAY_SECRET: ${VERIFY_RELAY_SECRET:?}
+      WEB_CSP_MODE: ${WEB_CSP_MODE:-enforce}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:?}
+    depends_on:
+      api:
+        condition: service_started
+    expose:
+      - '3200'
+    logging: *logging
+
+  # ── The public signing app (credential-poor by design) ────────────────────
+  sign:
+    build:
+      context: .
+      dockerfile: Dockerfile.sign
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      MAIN_API_URL: http://api:5100
+      SIGN_RELAY_SECRET: ${SIGN_RELAY_SECRET:?}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?}
+      # DELIBERATELY UNSET: TRUSTED_CLIENT_IP_HEADER.
+      # Behind Caddy the correct address is the rightmost X-Forwarded-For entry,
+      # which is what the relay already reads. Naming a header here switches it
+      # to the LEFTMOST entry — the forgeable end — and the address lands on a
+      # Certificate of Completion as evidence. See the note in Caddyfile.
+    depends_on:
+      api:
+        condition: service_started
+    expose:
+      - '3300'
+    logging: *logging
+
+  # ── The API. No published port: reachable only on this network. ───────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment: &api_env
+      NODE_ENV: production
+      PORT: '5100'
+      # Neon, unchanged. APP_DATABASE_URL is the RLS-bound docflow_app role —
+      # NOT the owner role. Tenant isolation depends on it having no BYPASSRLS.
+      APP_DATABASE_URL: ${APP_DATABASE_URL:?}
+      # Plain redis:// on the compose network. No TLS because the traffic never
+      # leaves the host's network namespace, and no password for the same
+      # reason — the port is not published (see the redis service).
+      REDIS_URL: redis://redis:6379
+      ESIGN_SEAL_KEYS: ${ESIGN_SEAL_KEYS:?}
+      ESIGN_LINK_TTL_DAYS: ${ESIGN_LINK_TTL_DAYS:-14}
+      SIGN_APP_URL: ${SIGN_APP_URL:?}
+      SIGN_RELAY_SECRET: ${SIGN_RELAY_SECRET:?}
+      VERIFY_RELAY_SECRET: ${VERIFY_RELAY_SECRET:?}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?}
+      RESEND_API_KEY: ${RESEND_API_KEY:?}
+      EMAIL_FROM: ${EMAIL_FROM:?}
+      # ALERT_EMAIL is deliberately ABSENT here rather than defaulted.
+      # The schema is z.email().optional() — a valid address or nothing.
+      # `${ALERT_EMAIL:-}` would set it to the empty string, which is not
+      # "unset": it fails z.email() and the API refuses to boot. To enable
+      # alerts, add a real address on the line below.
+      #   ALERT_EMAIL: ${ALERT_EMAIL}
+      S3_ENDPOINT: ${S3_ENDPOINT:?}
+      S3_BUCKET: ${S3_BUCKET:?}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?}
+      REMINDER_AFTER_DAYS: ${REMINDER_AFTER_DAYS:-3}
+      # Schema caps this at 10 (env.ts) — a higher value refuses to boot.
+      REMINDER_MAX: ${REMINDER_MAX:-3}
+    depends_on:
+      redis:
+        condition: service_healthy
+    expose:
+      - '5100'
+    logging: *logging
+
+  # ── The worker: same image, second entrypoint. ────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ['node', 'dist/worker.js']
+    # Identical environment to the API on purpose — one image, one config, so
+    # a job written by one can never be read by the other under different
+    # settings. YAML anchor rather than a copy, so they cannot drift.
+    environment: *api_env
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging: *logging
+
+  # ── The queue backend, replacing Upstash. ─────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # NO `ports:` — only `expose`. The queue is reachable from the other
+    # containers and from nothing else, which is why it needs no password and
+    # no TLS. Publishing 6379 to the host would put an unauthenticated Redis on
+    # the public internet; do not add it "temporarily to debug".
+    expose:
+      - '6379'
+    command:
+      - redis-server
+      - --save
+      - '60'
+      - '1'
+      - --loglevel
+      - warning
+      # Jobs are small and short-lived, but an unbounded Redis on a 4GB box
+      # will happily consume the API's memory. Evicting is wrong for a queue —
+      # a dropped job is a lost document — so it refuses writes instead, which
+      # surfaces as an enqueue error the API already reports honestly.
+      - --maxmemory
+      - '512mb'
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+  redis_data:

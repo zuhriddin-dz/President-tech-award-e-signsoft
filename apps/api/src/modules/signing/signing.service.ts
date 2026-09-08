@@ -357,6 +357,12 @@ export class SigningService {
       );
       if (!rc || rc.requestId !== row.id) notValid();
       if (rc.signingTokenHash !== resolved.tokenHash) notValid();
+      // The post-signing door is "read YOUR OWN signed artifacts", so it opens
+      // for someone who actually signed and nobody else. An envelope completes
+      // when its signers finish, which can leave a live token in the hands of
+      // someone who never did — a link re-issued and then never used, say — and
+      // that person is not a party to the result. Their own row is the record.
+      if (rc.status !== 'completed') notValid();
     } else if (row.signingTokenHash !== resolved.tokenHash) {
       // Legacy single-recipient envelope: the hash really is on the request.
       notValid();

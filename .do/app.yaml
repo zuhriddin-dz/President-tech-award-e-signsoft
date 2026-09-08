@@ -107,6 +107,13 @@ services:
       - key: SIGN_RELAY_SECRET
         scope: RUN_TIME
         type: SECRET
+      # Shared with apps/web's /api/verify hop. Optional: without it the public
+      # verify route rate-limits by the caller's socket address (safe, coarser)
+      # instead of per visitor, because an unauthenticated x-client-ip header on
+      # a public origin is a value the caller chooses.
+      - key: VERIFY_RELAY_SECRET
+        scope: RUN_TIME
+        type: SECRET
 
   # ── Worker ────────────────────────────────────────────────────────────────
   # Same image, different command. It has no http_port and no routes: it is

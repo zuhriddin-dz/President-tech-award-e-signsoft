@@ -22,15 +22,45 @@ try {
 const appUrl = process.env['APP_DATABASE_URL'];
 
 /**
- * RLS is a behaviour of the SERVER, so this proof is worth nothing against
- * anything but the real database — CI's placeholder URL would only prove that
- * a connection fails. Same test as the other integration specs applies.
+ * RLS is a behaviour of the SERVER, so this proof is worth nothing without a
+ * real database behind it. The question is how you ask whether there is one.
  *
- * The skip is spelled out in the suite name on purpose. A silent skip on the
- * one test that proves tenants cannot read each other is how a broken policy
- * reaches production with a green tick next to it.
+ * This used to be `appUrl.includes('neon.tech')`, and that was the bug: CI sets
+ * a placeholder URL, so the gate was always false and THE ONE TEST THAT PROVES
+ * TENANTS CANNOT READ EACH OTHER never ran — not in CI, not anywhere except a
+ * developer's machine pointed at production's provider. A missing policy on a
+ * new table would have shipped with a green tick, which is precisely the
+ * failure the comment below warns about.
+ *
+ * Probing the socket asks the real question and lets CI answer yes: the
+ * workflow now stands a Postgres up, applies the migrations as the owner role,
+ * and points this at it. With nothing listening the suite still skips, so a
+ * developer with no database keeps a fast green run.
+ *
+ * The skip is spelled out in the suite name on purpose. A silent skip here is
+ * how a broken policy reaches production unnoticed.
  */
-const live = Boolean(appUrl?.includes('neon.tech'));
+async function serverUp(raw: string | undefined): Promise<boolean> {
+  if (!raw) return false;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  const { Socket } = await import('node:net');
+  return new Promise((resolve) => {
+    const sock = new Socket();
+    const done = (ok: boolean) => (sock.destroy(), resolve(ok));
+    sock.setTimeout(1_500);
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+    sock.once('timeout', () => done(false));
+    sock.connect(Number(url.port) || 5432, url.hostname);
+  });
+}
+
+const live = await serverUp(appUrl);
 
 const db = new PrismaClient({
   // Never connected when !live; Prisma dials lazily, and the suite is skipped.

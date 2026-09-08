@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, degrees } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { stampPdf, toPdfBox } from './stamp-pdf.js';
 
@@ -69,6 +69,22 @@ describe('stampPdf', () => {
       signaturePng: PNG,
     });
     expect(out.subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
+  it('REFUSES a rotated page rather than sealing a document with no mark on it', async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([595, 842]);
+    page.setRotation(degrees(90));
+    await expect(
+      stampPdf({
+        pdfBytes: Buffer.from(await pdf.save()),
+        fields: [
+          { id: 'sig', type: 'signature', page: 1, x: 0.1, y: 0.8, w: 0.2, h: 0.05, required: true, recipientKey: 'signer' },
+        ],
+        fieldValues: {},
+        signaturePng: PNG,
+      }),
+    ).rejects.toThrow(/rotated/);
   });
 
   it('never throws on hostile Unicode in a value (the token-wedge guard)', async () => {

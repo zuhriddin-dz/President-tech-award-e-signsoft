@@ -31,8 +31,25 @@ export function pngDimensions(bytes: Buffer): { width: number; height: number } 
 /** ~64 MB decoder ceiling — far above a real signature, far below a bomb. */
 export const MAX_SIGNATURE_PIXELS = 4000 * 4000;
 
-/** The submit cap for the whole signature payload (bytes). */
-export const MAX_SIGNATURE_BYTES = 2 * 1024 * 1024;
+/**
+ * The submit cap for the decoded signature (bytes).
+ *
+ * Four layers bound this payload and they have to agree, or there is a band
+ * where a signature passes three gates and is refused by the fourth — as the
+ * uniform 404 the signing surface answers everything with, which tells the
+ * person nothing and cannot be acted on. The chain is:
+ *
+ *   relay body ceiling   3 MB   (the whole JSON request)
+ *   contract data URL    3,000,000 chars  -> at most ~2.25 MB once decoded
+ *   THIS                 3 MB   -> now strictly above what can reach it
+ *   express json limit   4 MB   (the envelope around the base64)
+ *
+ * At 2 MB this was the tightest link and the only one that could reject a
+ * payload every earlier gate had accepted. The effective ceiling is unchanged
+ * — the relay still stops anything over 3 MB on the wire — so nothing larger
+ * gets through than before; the dead band is simply gone.
+ */
+export const MAX_SIGNATURE_BYTES = 3 * 1024 * 1024;
 
 /**
  * Decode + validate an adopted-signature data URL (`data:image/png;base64,...`)

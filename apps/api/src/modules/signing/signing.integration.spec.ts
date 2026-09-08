@@ -10,6 +10,7 @@ import { mintSigningToken } from '@docflow/crypto';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { PrismaClient } from '@docflow/db';
 import { env } from '../../config/env.js';
+import { databaseUp, storageUp } from '../../test-support/live.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { StorageService } from '../../storage/storage.service.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
@@ -17,8 +18,10 @@ import { TenantDb } from '../../tenant/tenant-db.js';
 import { SigningTokenResolver } from '../../tenant/signing-token.resolver.js';
 import { SigningService } from './signing.service.js';
 
-const live =
-  env.S3_ENDPOINT.includes('r2.cloudflarestorage.com') && env.APP_DATABASE_URL.includes('neon.tech');
+// Needs BOTH a database and a real bucket. The database half is now a socket
+// probe: CI stands a Postgres up, and the old hostname gate meant these suites
+// ran nowhere. See src/test-support/live.ts.
+const live = storageUp(env.S3_ENDPOINT) && (await databaseUp(env.APP_DATABASE_URL));
 
 const prisma = new PrismaService();
 const cls = ClsServiceManager.getClsService();

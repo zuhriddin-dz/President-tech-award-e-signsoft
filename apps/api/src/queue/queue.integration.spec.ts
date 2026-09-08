@@ -7,20 +7,9 @@ import { randomUUID } from 'node:crypto';
 import { Queue, Worker, type Job } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { env } from '../config/env.js';
+import { redisUp } from '../test-support/live.js';
 
-async function redisUp(): Promise<boolean> {
-  const { Socket } = await import('node:net');
-  const url = new URL(env.REDIS_URL);
-  return new Promise((resolve) => {
-    const sock = new Socket();
-    sock.setTimeout(500);
-    sock.once('connect', () => (sock.destroy(), resolve(true)));
-    sock.once('error', () => resolve(false));
-    sock.once('timeout', () => (sock.destroy(), resolve(false)));
-    sock.connect(Number(url.port || 6379), url.hostname);
-  });
-}
-const live = await redisUp();
+const live = await redisUp(env.REDIS_URL);
 
 const qname = `docflow-test-${randomUUID().slice(0, 8)}`;
 const connection = { url: env.REDIS_URL };

@@ -8,11 +8,40 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+
+    # A REAL Postgres and a REAL Redis, because the tests that matter most are
+    # tests of server behaviour. Row-Level Security is enforced by the database,
+    # not by our code, so a suite that never reaches a database proves nothing
+    # about it — and until now every integration suite, including the RLS proof,
+    # skipped itself here against a placeholder connection string.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: docflow_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7
+        ports: ['6390:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     env:
-      # Dummy values so env contracts parse; integration specs skip themselves
-      # when the database is not a real Neon instance.
+      # Dummy values so the env contract parses. The database and queue URLs are
+      # real; the storage endpoint is not, so the R2-backed suites still skip
+      # (there is no local stand-in for object storage wired up).
       CLERK_SECRET_KEY: sk_test_ci_dummy_0000000000
-      APP_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      APP_DATABASE_URL: postgresql://docflow_app:docflow_ci@127.0.0.1:5432/docflow_ci
       S3_ENDPOINT: https://ci.invalid
       S3_BUCKET: ci
       S3_ACCESS_KEY_ID: ci
@@ -24,6 +53,7 @@ jobs:
       SIGN_APP_URL: http://localhost:3300
       ESIGN_LINK_TTL_DAYS: '14'
       SIGN_RELAY_SECRET: ci_dummy_relay_secret_at_least_32_bytes_long
+
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +67,50 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm build
+
+      # The migrations are written for production's role layout: they are
+      # applied BY neondb_owner and grant the runtime role docflow_app, which
+      # has no ownership and no BYPASSRLS. Recreating that split here is the
+      # whole point — RLS only bites for a role that policies apply to, so
+      # running the proof as a superuser would prove the opposite of what it
+      # claims. The names match production so the SQL needs no CI-only variant.
+      - name: Create the owner and runtime roles
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d docflow_ci -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE neondb_owner LOGIN SUPERUSER PASSWORD 'docflow_ci';
+          ALTER DATABASE docflow_ci OWNER TO neondb_owner;
+          SQL
+
+      - name: Apply migrations as the owner
+        working-directory: packages/db
+        env:
+          DATABASE_URL: postgresql://neondb_owner:docflow_ci@127.0.0.1:5432/docflow_ci
+        run: pnpm db:deploy
+
+      # The runtime role is created by a migration without a password (a
+      # committed one would be a leaked secret). Give it the CI one so the app's
+      # connection string works, exactly as scripts/set-app-role-password.mjs
+      # does for a real deploy.
+      - name: Set the runtime role's password
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d docflow_ci -v ON_ERROR_STOP=1 \
+            -c "ALTER ROLE docflow_app PASSWORD 'docflow_ci';"
+
+      # Fails the build if the runtime role can bypass RLS. Everything else in
+      # this job assumes it cannot, so the assumption is checked rather than
+      # trusted: a Postgres image that made the role a superuser would otherwise
+      # turn the isolation proof into a test that passes for the wrong reason.
+      - name: Prove the runtime role is not privileged
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h 127.0.0.1 -U postgres -d docflow_ci -v ON_ERROR_STOP=1 -tAc \
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname='docflow_app';" \
+            | grep -qx f
 
       - run: pnpm test
 

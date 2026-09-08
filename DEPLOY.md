@@ -146,6 +146,7 @@ Redeploy all four.
 | `ALERT_EMAIL` | Where operational alerts go — a stuck completion, a failing sweep. Optional, but leaving it blank means nothing tells you when sealing breaks. |
 | `SIGN_APP_URL` | Base of every signing link. Wrong value = every invite dead on arrival. |
 | `SIGN_RELAY_SECRET` | ≥32 bytes. Must be **identical** to the sign app's copy. |
+| `VERIFY_RELAY_SECRET` | ≥32 bytes, **optional**, must match apps/web's copy. See "Rate limiting and client addresses" below. |
 | `ESIGN_LINK_TTL_DAYS`, `REMINDER_AFTER_DAYS`, `REMINDER_MAX` | Optional; sensible defaults in `env.ts`. |
 
 The API refuses to boot on a bad environment — `parseEnv` validates the whole
@@ -159,6 +160,8 @@ fails the deploy loudly instead of at the first request.
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_live_…` |
 | `CLERK_SECRET_KEY` | `sk_live_…` |
 | `API_ORIGIN` | `https://api.esignsoft.uz` |
+| `VERIFY_RELAY_SECRET` | Optional; identical to the API's. |
+| `WEB_CSP_MODE` | Optional: `report-only` (default), `enforce`, `off`. See "The web app's CSP" below. |
 
 ### Vercel — `apps/sign`
 
@@ -171,6 +174,76 @@ database, no keys, no Clerk credentials — a full compromise yields the
 | `MAIN_API_URL` | `https://api.esignsoft.uz` |
 | `SIGN_RELAY_SECRET` | Identical to the API's. |
 | `NEXT_PUBLIC_APP_URL` | `https://esignsoft.uz`. Public by definition — only builds the post-signing "create an account" link. |
+| `TRUSTED_CLIENT_IP_HEADER` | **Leave unset** unless a CDN fronts this origin. See below. |
+
+---
+
+## Rate limiting and client addresses
+
+Three of this system's limits are keyed on "the client's IP", and on a public
+origin that phrase hides a trap: a header is a value the caller *chooses*.
+
+**The signer's address** (`apps/sign`) ends up on the Certificate of Completion
+as non-repudiation evidence, so it is derived only from headers the platform
+sets and a caller cannot write — `x-vercel-forwarded-for`, or the **rightmost**
+entry of `x-forwarded-for`, which is the hop that actually accepted the
+connection. `cf-connecting-ip`, `x-real-ip` and friends are *stripped* on the
+way in, because nothing sets them on Vercel today.
+
+If you put Cloudflare (or any proxy) in front of `sign.esignsoft.uz`, set
+`TRUSTED_CLIENT_IP_HEADER=cf-connecting-ip` at that moment and not before.
+Setting it while nothing is in front hands every signer the ability to write
+their own address into the evidence.
+
+**The verification limit** (`/verify` on the API) has the same problem and the
+opposite shape: the real visitor is behind apps/web's hop, so their address has
+to be forwarded — but the API cannot tell our hop from anyone else. That is
+what `VERIFY_RELAY_SECRET` is for. Set the same value in both places and
+per-visitor limiting works. Leave it unset and the API ignores the forwarded
+header and limits by the caller's real socket address instead: safe, just
+coarser. It is never a security downgrade to omit it — only a precision one.
+
+**A backstop applies either way.** Every unauthenticated request is counted
+against its socket address at a deliberately high ceiling, so a caller reaching
+`api.esignsoft.uz` directly is bounded even when it vouches for nothing.
+
+The limits are enforced in-process *and* in Redis, so the cap stays global once
+`instance_count` goes above 1. The Redis half **fails open** to the in-process
+one: a queue outage degrades limiting, it never turns a signing ceremony into a
+404.
+
+---
+
+## The web app's CSP
+
+`apps/web` sends the full set of security headers — HSTS, `nosniff`,
+`X-Frame-Options: DENY`, `Referrer-Policy`, COOP, `Permissions-Policy` —
+unconditionally. None of them can break a working page.
+
+The Content-Security-Policy is **staged**, and ships as `Report-Only`. This app
+loads Clerk (which injects its own script), Vercel Analytics and pdf.js; a
+policy that is wrong about any of them renders a blank dashboard. Report-Only
+publishes exactly the same rules and logs violations to the browser console
+without enforcing them.
+
+To turn it on:
+
+1. Deploy, open the dashboard, the templates editor and a sign-in screen.
+2. Check the browser console for `Content-Security-Policy-Report-Only` messages.
+3. If there are none, set `WEB_CSP_MODE=enforce` and redeploy.
+
+The nonce is already wired through `ClerkProvider` in both modes, so enforcing
+changes the header and nothing else.
+
+**One trade to know about, measured.** A nonce is per-request, so the root
+layout reads a request header, and that opts routes out of static rendering.
+Comparing `next build` with the policy on and off, the cost is five pages:
+`/privacy`, `/terms`, `/verify`, `/welcome` and `/_not-found` go from
+prerendered to server-rendered. Everything else — the landing page `/` included
+— was already dynamic, so nothing that mattered for TTFB changed.
+
+`WEB_CSP_MODE=off` skips the header read entirely and restores those five to
+static, at the cost of shipping no policy at all.
 
 ---
 

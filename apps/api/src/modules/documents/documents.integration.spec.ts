@@ -6,15 +6,18 @@ import { randomUUID } from 'node:crypto';
 import { ClsServiceManager } from 'nestjs-cls';
 import { afterAll, describe, expect, it } from 'vitest';
 import { env } from '../../config/env.js';
+import { databaseUp, storageUp } from '../../test-support/live.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { StorageService } from '../../storage/storage.service.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
 import { TenantDb } from '../../tenant/tenant-db.js';
 import { DocumentsService } from './documents.service.js';
 
+// Needs BOTH a database and a real bucket; a socket probe answers the first,
+// since CI now stands a Postgres up (see src/test-support/live.ts for why the
+// old hostname gate meant this never ran anywhere).
 const live =
-  env.S3_ENDPOINT.includes('r2.cloudflarestorage.com') &&
-  env.APP_DATABASE_URL.includes('neon.tech');
+  storageUp(env.S3_ENDPOINT) && (await databaseUp(env.APP_DATABASE_URL));
 
 const prisma = new PrismaService();
 const cls = ClsServiceManager.getClsService();

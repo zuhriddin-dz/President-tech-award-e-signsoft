@@ -30,6 +30,56 @@ import { TenantDb } from '../../tenant/tenant-db.js';
 /** Ceiling on what verify() will stream-hash — well above any real document. */
 const MAX_VERIFY_BYTES = 64 * 1024 * 1024;
 
+/** Minimum gap between two re-issues of the same person's signing link. */
+const RESEND_COOLDOWN_MS = 60_000;
+
+/**
+ * Every signer must own at least one field.
+ *
+ * `recipientKey` is what binds a person to the boxes they fill: the ceremony
+ * shows a signer only the fields carrying their key, and the stamper draws
+ * their mark into exactly those. The contract validates the key's SHAPE but
+ * cannot check it against the template, so until now the API accepted an
+ * envelope where a signer's key matched no field at all — and the consequences
+ * ran all the way through the pipeline:
+ *
+ *   That signer opens an empty ceremony. They have no required field to leave
+ *   blank, so `resolveFieldValues` reports nothing missing and their submit
+ *   succeeds. They are recorded `completed`, they count towards the envelope
+ *   finishing, and they are named on the Certificate of Completion — attached
+ *   to a sealed document that carries no mark of theirs anywhere.
+ *
+ * An artifact that names a signatory and shows no signature is not a defect in
+ * a report; it is our own pipeline producing something that reads as evidence
+ * and is not. Refuse it at the door, where the sender can still fix it.
+ *
+ * The editor already assigns a distinct key per recipient and copies fields to
+ * anyone untagged on the way to the review screen, so this rejects nothing the
+ * product can produce. It closes the gap for anything talking to the API directly.
+ *
+ * NOT checked here: two signers sharing one key. That is a real sharp edge —
+ * they are handed the same boxes and the completion pipeline stamps both marks
+ * into the same rectangles, overlapping — but it is existing, deliberately
+ * exercised behaviour, and every signature is still present and every
+ * certificate entry still accurate. Changing it is a product decision about
+ * what a shared field group means, not a bug fix, so it stays out of a
+ * security pass.
+ */
+export function assertSignersAreTagged(
+  input: SendRequest,
+  fields: { recipientKey?: string }[],
+): void {
+  const tagged = new Set(fields.map((f) => f.recipientKey ?? 'signer'));
+  for (const r of input.recipients) {
+    if (r.role !== 'signer') continue; // a cc fills nothing and needs no key
+    if (!tagged.has(r.recipientKey)) {
+      throw new BadRequestException(
+        `${r.email} has no fields to sign — tag at least one field for them before sending.`,
+      );
+    }
+  }
+}
+
 /**
  * A short, id-safe token for an email address, used only to build a
  * deterministic BullMQ job id (which may not contain ':' — and an email may).
@@ -116,6 +166,7 @@ export class SignatureRequestsService {
     if (!Array.isArray(fields) || fields.length === 0) {
       throw new BadRequestException('template has no fields to sign');
     }
+    assertSignersAreTagged(input, fields as { recipientKey?: string }[]);
 
     const expiresAt = new Date(Date.now() + env.ESIGN_LINK_TTL_DAYS * 86_400_000);
     const firstSigner =
@@ -282,6 +333,17 @@ export class SignatureRequestsService {
       if (rc.status === 'completed') throw new ConflictException('They have already signed.');
       if (rc.status === 'pending') {
         throw new ConflictException("It is not this person's turn yet.");
+      }
+      // A resend mints a NEW token and mails it, and the job id is
+      // time-suffixed so BullMQ cannot dedupe it. Both are correct, and
+      // together they make an unthrottled loop here a mail flood aimed at
+      // somebody else's inbox from our verified sending domain. One re-issue a
+      // minute is far more than a person clicking "Resend" ever needs.
+      const since = rc.sentAt ?? rc.lastRemindedAt;
+      if (since && Date.now() - since.getTime() < RESEND_COOLDOWN_MS) {
+        throw new ConflictException(
+          'A link was just sent to this person. Wait a moment before sending another.',
+        );
       }
 
       const minted = mintSigningToken();

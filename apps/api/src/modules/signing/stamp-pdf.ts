@@ -61,9 +61,17 @@ export async function stampPdf(input: StampInput): Promise<Buffer> {
     const pw = quarterTurn ? mediaH : mediaW;
     const ph = quarterTurn ? mediaW : mediaH;
     const box = toPdfBox(field, pw, ph);
-    // Rotated pages are out of scope for precise placement; skip rather than
-    // stamp a signature somewhere wrong on a legal document.
-    if (quarterTurn || rotation !== 0) continue;
+    // Rotated pages are out of scope for precise placement. This used to skip
+    // the field — which on a signature field means sealing, certifying and
+    // emailing a document with NO mark on it, an artifact that looks exactly
+    // like a completed agreement and is not one. Refuse instead: uploads reject
+    // rotated PDFs (readPdfGeometry), so reaching this means an assumption
+    // broke, and a loud failure the reconciler retries is the only safe answer.
+    if (quarterTurn || rotation !== 0) {
+      throw new Error(
+        `stamp: page ${field.page} is rotated ${rotation}deg — fields cannot be placed accurately`,
+      );
+    }
     const mediaBox = page.getMediaBox();
     box.x += mediaBox.x;
     box.y += mediaBox.y;

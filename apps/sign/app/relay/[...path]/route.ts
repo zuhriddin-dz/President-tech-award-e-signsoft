@@ -82,20 +82,67 @@ async function readBounded(
 }
 
 /**
- * The signer's IP for the audit trail. This box is the internet-facing EDGE, so
- * it must NOT trust a client-supplied X-Forwarded-For — the leftmost entry is
- * attacker-settable, and this value becomes non-repudiation evidence on the
- * Certificate of Completion. Trust only a header a trusted upstream sets and a
- * client cannot forge past it: Cloudflare's cf-connecting-ip (the planned CDN),
- * or a single-value x-real-ip from a trusted reverse proxy. Otherwise 'unknown'
- * — an honest blank, never a forgeable one.
+ * The signer's IP for the audit trail.
+ *
+ * This value becomes non-repudiation evidence on the Certificate of Completion
+ * and the key both rate limiters count against, so the ONLY question that
+ * matters is: could the person being recorded have chosen it?
+ *
+ * This box is the internet-facing edge. Every header on an inbound request is
+ * therefore attacker-settable unless the hosting platform sets it itself and
+ * overwrites what arrived — which rules out `cf-connecting-ip` (nothing sets it
+ * unless Cloudflare actually fronts this origin), `x-real-ip` (conventional,
+ * not guaranteed), and the LEFTMOST entry of `x-forwarded-for` (the appendable
+ * end of the chain, which is exactly where a forged hop lands).
+ *
+ * What is left, in order:
+ *
+ *   1. TRUSTED_CLIENT_IP_HEADER — an explicit opt-in for when a CDN really is
+ *      in front. Naming the header is a deployment decision, not a guess, and
+ *      it is the ONLY way `cf-connecting-ip` is ever read. Set it to
+ *      `cf-connecting-ip` the day Cloudflare is switched on, and not before.
+ *   2. x-vercel-forwarded-for — Vercel sets this and strips any inbound copy,
+ *      because the whole `x-vercel-*` namespace is reserved to the platform.
+ *   3. The RIGHTMOST entry of x-forwarded-for — the hop nearest us, appended by
+ *      the proxy that actually accepted the connection. A client can prepend
+ *      entries; it cannot append past its own.
+ *   4. 'unknown' — an honest blank. A recorded address that a signer could have
+ *      chosen is worse than no address at all: it looks like evidence.
  */
 function clientIp(req: NextRequest): string {
-  const cf = req.headers.get('cf-connecting-ip');
-  if (cf) return cf.trim();
-  const real = req.headers.get('x-real-ip');
-  if (real) return real.trim();
+  const named = process.env.TRUSTED_CLIENT_IP_HEADER?.trim().toLowerCase();
+  if (named) {
+    const value = req.headers.get(named);
+    if (value) return firstAddress(value);
+  }
+
+  const vercel = req.headers.get('x-vercel-forwarded-for');
+  if (vercel) return firstAddress(vercel);
+
+  const chain = req.headers.get('x-forwarded-for');
+  if (chain) {
+    const hops = chain
+      .split(',')
+      .map((h) => h.trim())
+      .filter(Boolean);
+    const nearest = hops[hops.length - 1];
+    if (nearest) return bounded(nearest) || 'unknown';
+  }
+
   return 'unknown';
+}
+
+/** A single address from a header that may legitimately carry one value. */
+function firstAddress(value: string): string {
+  return bounded(value.split(',')[0]?.trim() ?? '') || 'unknown';
+}
+
+/**
+ * An address is short. Anything longer is not one, and forwarding it would let
+ * a caller choose the size of a rate-limiter map key and an audit column.
+ */
+function bounded(value: string): string {
+  return value.length > 45 ? '' : value;
 }
 
 async function relay(

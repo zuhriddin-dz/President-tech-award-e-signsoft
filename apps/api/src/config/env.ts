@@ -48,6 +48,18 @@ const envSchema = z.object({
   // on /sign/* routes, so a compromise of that box reaches the signing surface
   // and nothing else. >= 32 bytes.
   SIGN_RELAY_SECRET: z.string().min(32),
+  // The equivalent narrow credential for the PUBLIC VERIFY hop in apps/web.
+  //
+  // /verify is the one route with no credential of any kind, so its per-IP
+  // budget can only be keyed on an address somebody vouches for — and on a
+  // public origin, an unauthenticated `x-client-ip` header is a value the
+  // attacker picks. With this set, apps/web's /api/verify route presents it and
+  // its forwarded client address is believed; without it the header is ignored
+  // and the budget falls back to the caller's real socket address.
+  //
+  // OPTIONAL on purpose: unset is safe (coarser, never weaker), so an existing
+  // deploy keeps booting and can adopt it whenever apps/web is updated too.
+  VERIFY_RELAY_SECRET: z.string().min(32).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

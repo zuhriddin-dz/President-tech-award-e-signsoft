@@ -8,10 +8,34 @@ import { NextResponse, type NextRequest } from 'next/server';
  */
 export const runtime = 'nodejs';
 
-// Identity/auth-shaped headers a client might try to smuggle inbound. The relay
-// builds its upstream headers from an allowlist anyway — defense in depth.
+// Headers a client might try to smuggle inbound, in two families.
+//
+// IDENTITY-SHAPED: anything that would be read as "who is this" downstream. The
+// relay builds its upstream headers from an allowlist anyway — defense in depth.
+//
+// ADDRESS-SHAPED: the headers a reverse proxy would use to state the original
+// client address. Nothing in front of this app sets them on Vercel, so any that
+// arrive were written by the caller — and the value ends up on a Certificate of
+// Completion as evidence. They are deleted here so no future edit can casually
+// read one; the relay derives the address from platform-set headers instead
+// (see clientIp() there). A deployment that really does sit behind a CDN names
+// its header in TRUSTED_CLIENT_IP_HEADER, which is checked BEFORE this strip
+// list can matter, because the strip happens on the request the relay then
+// reads — so the named header is exempted below.
 const DANGEROUS_INBOUND =
   /^(x-tenant-|x-internal-auth$|x-client-ip$|x-forwarded-(auth|authorization|user|email|role|roles|permissions)$|authorization$)/i;
+
+const FORGEABLE_ADDRESS_HEADERS = new Set([
+  'cf-connecting-ip',
+  'true-client-ip',
+  'x-real-ip',
+  'fastly-client-ip',
+  'x-cluster-client-ip',
+  'x-client-ip',
+]);
+
+/** The one address header this deployment has decided to believe, if any. */
+const TRUSTED_ADDRESS_HEADER = process.env.TRUSTED_CLIENT_IP_HEADER?.trim().toLowerCase();
 
 function buildCsp(nonce: string): string {
   const devEval = process.env.NODE_ENV === 'production' ? '' : " 'unsafe-eval'";
@@ -37,7 +61,11 @@ function buildCsp(nonce: string): string {
 export function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   for (const key of [...requestHeaders.keys()]) {
-    if (DANGEROUS_INBOUND.test(key)) requestHeaders.delete(key);
+    const name = key.toLowerCase();
+    if (name === TRUSTED_ADDRESS_HEADER) continue; // vouched for by the CDN in front
+    if (DANGEROUS_INBOUND.test(key) || FORGEABLE_ADDRESS_HEADERS.has(name)) {
+      requestHeaders.delete(key);
+    }
   }
 
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');

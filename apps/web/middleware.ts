@@ -1,4 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
+import { applyBaseSecurityHeaders, buildCsp, cspMode } from '@/lib/security-headers';
 
 // The landing page ('/') and the auth pages are public; everything else
 // (dashboard, templates, /api/*) requires a session.
@@ -18,10 +20,44 @@ const isPublicRoute = createRouteMatcher([
   '/api/verify',
 ]);
 
+const MODE = cspMode(process.env.WEB_CSP_MODE);
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 // Everything except the auth pages requires a session. The BFF /api routes
 // are protected too — they forward the caller's own token, never a shared one.
+//
+// The same pass also attaches this app's security headers. They were missing
+// entirely: apps/sign shipped a CSP, HSTS and frame-deny from the start while
+// the app holding the session cookie shipped none of them.
 export default clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) await auth.protect();
+
+  const requestHeaders = new Headers(req.headers);
+  let csp: string | null = null;
+
+  if (MODE !== 'off') {
+    // btoa, not Buffer: middleware runs on the EDGE runtime by default, where
+    // Buffer is not guaranteed to exist. apps/sign gets away with it only
+    // because it declares `runtime = 'nodejs'`.
+    const nonce = btoa(crypto.randomUUID());
+    csp = buildCsp(nonce, IS_PRODUCTION);
+    requestHeaders.set('x-nonce', nonce);
+    // Next reads the nonce out of the CSP on the REQUEST headers to stamp its
+    // own injected bootstrap scripts. Set even in report-only mode, so the
+    // nonces are already correct when the policy is switched to enforcing and
+    // the switch is not itself the change that breaks hydration.
+    requestHeaders.set('Content-Security-Policy', csp);
+  }
+
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  applyBaseSecurityHeaders(res.headers);
+  if (csp) {
+    res.headers.set(
+      MODE === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only',
+      csp,
+    );
+  }
+  return res;
 });
 
 export const config = {

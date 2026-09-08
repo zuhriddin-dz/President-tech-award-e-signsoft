@@ -9,10 +9,13 @@ generated/
 *.tmp.mjs
 *.tmp.js
 
-# secrets never enter the repo — .env.example carries names + generators only
+# secrets never enter the repo — the *.example files carry names + generators
+# only. `.env.vm` is the filled-in copy that lives on the droplet and holds the
+# seal ring; it must never be tracked, which is what `.env.*` above ensures.
 .env
 .env.*
 !.env.example
+!.env.vm.example
 
 # Local tooling and internal planning notes — not part of the product.
 CLAUDE.md

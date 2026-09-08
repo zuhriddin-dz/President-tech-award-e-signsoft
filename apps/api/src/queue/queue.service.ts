@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { OnModuleDestroy } from '@nestjs/common';
 import type { JobsOptions, Queue } from 'bullmq';
+import type { RateLimitRedis } from '../common/rate-limit.js';
 import { createQueue } from './queue.js';
 
 /** Per-job overrides a caller may set (e.g. don't retain a token-bearing payload). */
@@ -53,6 +54,25 @@ export class QueueService implements OnModuleDestroy {
       ENQUEUE_TIMEOUT_MS,
       `enqueue "${name}" timed out after ${ENQUEUE_TIMEOUT_MS}ms`,
     );
+  }
+
+  /**
+   * The queue's own Redis connection, for the shared rate-limit window.
+   *
+   * Deliberately NOT a second client: one connection, one place that knows the
+   * Redis URL, and the producer's fail-fast policy (bounded retries, no offline
+   * queue) is exactly what a request-path rate limiter wants — a Redis that is
+   * down must answer immediately so the caller can fall back, never hang.
+   *
+   * Returns null rather than throwing when the connection cannot be obtained;
+   * the limiter treats that as "no shared view" and uses its in-process floor.
+   */
+  async rateLimitClient(): Promise<RateLimitRedis | null> {
+    try {
+      return (await this.queue.client) as unknown as RateLimitRedis;
+    } catch {
+      return null;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
