@@ -6,7 +6,47 @@
       "outputs": ["dist/**", ".next/**"]
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      // Turborepo 2 defaults to envMode "strict": a task sees ONLY the
+      // variables named here, and everything else in the parent environment is
+      // stripped. Undeclared, the suites that import config/env.ts died in CI
+      // with "Invalid environment: <all twelve>" even though the workflow set
+      // every one of them — the values never reached vitest.
+      //
+      // It passed locally for the wrong reason: apps/api/.env exists on a dev
+      // machine and env.ts calls process.loadEnvFile(), repopulating
+      // process.env INSIDE the test process regardless of what turbo passed.
+      // CI has no such file, so CI was the honest signal.
+      //
+      // Declared under `env` rather than `passThroughEnv` deliberately: these
+      // values change what the tests DO (which database, which queue), so they
+      // belong in the cache key. With passThroughEnv, turbo would happily
+      // replay a cached pass from a different database.
+      "env": [
+        "NODE_ENV",
+        "CLERK_SECRET_KEY",
+        "APP_DATABASE_URL",
+        "S3_ENDPOINT",
+        "S3_BUCKET",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+        "REDIS_URL",
+        "ESIGN_SEAL_KEYS",
+        "RESEND_API_KEY",
+        "EMAIL_FROM",
+        "ALERT_EMAIL",
+        "SIGN_APP_URL",
+        "SIGN_RELAY_SECRET",
+        "VERIFY_RELAY_SECRET",
+        "ESIGN_LINK_TTL_DAYS",
+        "REMINDER_AFTER_DAYS",
+        "REMINDER_MAX",
+        // packages/db's RLS proof connects as the owner and as the runtime
+        // role; without these it skips itself, which is the one suite that
+        // must never quietly pass by not running.
+        "DATABASE_URL",
+        "POOLED_DATABASE_URL"
+      ]
     },
     "lint": {},
     "dev": {

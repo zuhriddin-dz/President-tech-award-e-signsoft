@@ -4,7 +4,7 @@
 # the REPO ROOT because this is a pnpm workspace, and the workspace tree is
 # copied as ONE unit so pnpm's symlink farm survives.
 #
-# Paired with Dockerfile.web.dockerignore — the root .dockerignore deliberately
+# Paired with Dockerfile.web.dockerignore - the root .dockerignore deliberately
 # excludes apps/web source (the API image has no business carrying it), so this
 # image needs its own ignore rules or the build context arrives empty.
 #
