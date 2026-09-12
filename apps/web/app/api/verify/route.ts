@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import { readBounded } from '@/lib/read-bounded';
 
 /**
  * The public verification hop.
@@ -23,6 +24,13 @@ const API_ORIGIN = process.env.API_ORIGIN ?? 'http://localhost:5100';
  * Unset is safe, just coarser: the API falls back to socket-address limiting.
  */
 const VERIFY_RELAY_SECRET = process.env.VERIFY_RELAY_SECRET ?? '';
+
+/** {"documentHash":"<64 hex>"} is about 80 bytes; the rest is headroom, not an allowance. */
+const MAX_VERIFY_BYTES = 1024;
+
+function tooLarge(): Response {
+  return Response.json({ error: 'Request body too large.' }, { status: 413 });
+}
 
 /**
  * The visitor's address, from a header the visitor cannot write.
@@ -49,9 +57,20 @@ export async function POST(req: NextRequest): Promise<Response> {
   // Read and re-serialise rather than streaming the body through. The payload
   // is one 64-character digest; parsing it here means a malformed request is
   // rejected at our edge instead of occupying an API worker.
+  //
+  // Bounded, because nothing else bounds it. next.config.ts lets bodies up to
+  // 21MiB through middleware so PDF uploads arrive whole, and this route has no
+  // session in front of it: an unbounded req.json() would parse and forward
+  // that much for anyone who asked. The Content-Length check only turns honest
+  // oversized requests away early; the counted read is the real gate.
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_VERIFY_BYTES) return tooLarge();
+  const raw = await readBounded(req.body, MAX_VERIFY_BYTES);
+  if (!raw) return tooLarge();
+
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(new TextDecoder().decode(raw));
   } catch {
     return Response.json({ error: 'Expected a JSON body.' }, { status: 400 });
   }
