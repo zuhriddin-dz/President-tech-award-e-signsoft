@@ -26,24 +26,69 @@ export function cspMode(raw: string | undefined): CspMode {
 }
 
 /**
+ * The origin of this instance's Clerk Frontend API, read out of the
+ * publishable key — or null when the key is not one we can read.
+ *
+ * A publishable key is `pk_live_` / `pk_test_` followed by the base64 of the
+ * Frontend API host and a trailing `$`: pk_live_Y2xlcmsuZXNpZ25zb2Z0LnV6JA
+ * decodes to `clerk.esignsoft.uz$`. Deriving it rather than hardcoding it keeps
+ * one policy correct for every key — a pk_test_ instance on *.clerk.accounts.dev
+ * and a production instance on its own custom domain alike.
+ *
+ * Returns null rather than guessing. A decoded value that is not a plain
+ * hostname is never added to the policy, so a malformed key degrades to the
+ * wildcard hosts in buildCsp instead of widening connect-src to whatever the
+ * string happened to contain.
+ */
+export function clerkFrontendApiOrigin(publishableKey: string | undefined): string | null {
+  const match = /^pk_(?:live|test)_([A-Za-z0-9+/=]+)$/.exec(publishableKey?.trim() ?? '');
+  if (!match) return null;
+  let decoded: string;
+  try {
+    decoded = atob(match[1]!);
+  } catch {
+    return null;
+  }
+  const host = decoded.endsWith('$') ? decoded.slice(0, -1) : decoded;
+  if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(host)) {
+    return null;
+  }
+  return `https://${host.toLowerCase()}`;
+}
+
+/**
  * What this app actually loads, and nothing else:
  *
- *   Clerk  — clerk-js plus its UI. On a production instance it is served
- *            FIRST-PARTY from /__clerk/* (see middleware.ts), so 'self' covers
- *            it; the accounts.dev hosts are what a pk_test_ instance uses, and
- *            img.clerk.com serves member avatars. Clerk's bot protection is
- *            Cloudflare Turnstile, which needs a script and a frame.
+ *   Clerk  — clerk-js and its UI load from the instance's Frontend API host,
+ *            and clerk-js then calls /v1/* on that same host. For a production
+ *            instance that host is the custom domain (clerk.esignsoft.uz),
+ *            which none of the wildcard hosts cover. With the policy enforced,
+ *            the browser refused every one of those calls — /v1/environment and
+ *            /v1/client, retries included — and sign-in could not work, while
+ *            the form still drew. So the Frontend API origin is passed in,
+ *            derived from the publishable key. The accounts.dev hosts cover a
+ *            pk_test_ instance; img.clerk.com serves member avatars. Clerk's
+ *            bot protection is Cloudflare Turnstile, which needs a script and a
+ *            frame.
  *   Vercel — @vercel/analytics loads /_vercel/insights/script.js, same-origin.
  *   pdf.js — renders in a Web Worker from a blob URL, and draws to canvas.
  *
  * `strict-dynamic` means the host allowlist in script-src is ignored by
  * browsers that understand it: only the nonce (and whatever a nonced script
  * loads) executes. The hosts stay for older browsers, which fall back to the
- * allowlist.
+ * allowlist. connect-src has no such escape hatch — it is always host-based —
+ * which is why the Frontend API origin must be named there explicitly, and why
+ * a nonce alone was never enough.
  */
-export function buildCsp(nonce: string, isProduction: boolean): string {
+export function buildCsp(
+  nonce: string,
+  isProduction: boolean,
+  clerkFrontendApi: string | null = null,
+): string {
   const devEval = isProduction ? '' : " 'unsafe-eval'";
-  const clerk = 'https://*.clerk.accounts.dev https://*.clerk.com';
+  const clerk = ['https://*.clerk.accounts.dev', 'https://*.clerk.com', clerkFrontendApi]
+    .filter(Boolean)
+    .join(' ');
   return [
     `default-src 'self'`,
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' ${clerk} https://challenges.cloudflare.com${devEval}`,

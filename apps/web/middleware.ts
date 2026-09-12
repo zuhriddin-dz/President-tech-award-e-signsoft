@@ -1,6 +1,11 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-import { applyBaseSecurityHeaders, buildCsp, cspMode } from '@/lib/security-headers';
+import {
+  applyBaseSecurityHeaders,
+  buildCsp,
+  clerkFrontendApiOrigin,
+  cspMode,
+} from '@/lib/security-headers';
 
 // The landing page ('/') and the auth pages are public; everything else
 // (dashboard, templates, /api/*) requires a session.
@@ -22,6 +27,11 @@ const isPublicRoute = createRouteMatcher([
 
 const MODE = cspMode(process.env.WEB_CSP_MODE);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+// NEXT_PUBLIC_* is inlined at build, so this is a constant in the edge bundle
+// and the decode runs once per isolate, not once per request. Without it the
+// enforced policy blocks every call clerk-js makes to its own Frontend API —
+// see clerkFrontendApiOrigin in lib/security-headers.ts.
+const CLERK_FRONTEND_API = clerkFrontendApiOrigin(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 // Everything except the auth pages requires a session. The BFF /api routes
 // are protected too — they forward the caller's own token, never a shared one.
@@ -40,7 +50,7 @@ export default clerkMiddleware(async (auth, req) => {
     // Buffer is not guaranteed to exist. apps/sign gets away with it only
     // because it declares `runtime = 'nodejs'`.
     const nonce = btoa(crypto.randomUUID());
-    csp = buildCsp(nonce, IS_PRODUCTION);
+    csp = buildCsp(nonce, IS_PRODUCTION, CLERK_FRONTEND_API);
     requestHeaders.set('x-nonce', nonce);
     // Next reads the nonce out of the CSP on the REQUEST headers to stamp its
     // own injected bootstrap scripts. Set even in report-only mode, so the
