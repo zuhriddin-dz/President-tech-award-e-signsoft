@@ -1,87 +1,61 @@
-import type { TemplateField } from '@docflow/contracts';
+import { FIELD_VALUE_RULES, fieldValueProblem, type TemplateField } from '@docflow/contracts';
 
 /**
  * Deciding what text actually gets stamped into the sealed document.
  *
- * THE RULE: anything the certificate treats as a fact — who signed, when, at
- * what address — is computed HERE, on the server, from the request row. The
- * signer's browser computes the same values for display, but its version is
- * never trusted: a signer who edits the submit body could otherwise make the
- * contract's own face read "signed 01 Jan 2020 by Jane Doe", and the server
- * would hash, seal and certify exactly those bytes — with /verify reporting
- * "valid", because the forgery is inside the signed content.
+ * THE RULE: the moment of signing is a fact the certificate records, so the
+ * Date Signed box is computed HERE from the server clock and never taken from
+ * the client. A signer who edits the submit body could otherwise make the
+ * contract's own face read "signed 01 Jan 2020", and the server would hash,
+ * seal and certify exactly those bytes — with /verify reporting "valid",
+ * because the forgery is inside the signed content.
  *
- * Only genuinely free-form inputs (text, checkbox, company, title) take the
- * signer's value, and only for fields that exist in the snapshot. Keys the
- * snapshot doesn't know are dropped rather than stored.
+ * Everything else is the signer's own input — name and email included. Those
+ * two were server-filled until 2026-09; making the signer type them was a
+ * product decision, taken knowing the trade: the face now shows what the
+ * signer typed, which can differ from the invited name or address. WHO signed
+ * is still proven where it always was — the certificate's invited address and
+ * possession of its link.
+ *
+ * Every typed value must pass its FIELD_VALUE_RULES entry, the same rule the
+ * signing app enforces as the signer types, so a value only fails here when
+ * the browser was bypassed. Only fields the snapshot knows are kept, and a
+ * choice field only ever holds an option the sender offered.
  */
 
 /** Fields the adopted signature image is stamped into — never text. */
 const IMAGE_KINDS = new Set(['signature', 'initial', 'stamp']);
 
-/** SERVER-authoritative: derived from the request, never from the client. */
-const AUTO_KINDS = new Set(['date', 'name', 'first_name', 'last_name', 'email']);
-
-/** The signer genuinely authors these. */
-const INPUT_KINDS = new Set([
-  'text',
-  'number',
-  'phone',
-  'address',
-  'checkbox',
-  'company',
-  'title',
-  'dropdown',
-  'radio',
-]);
+/** SERVER-authoritative: Date Signed, from the signing moment. */
+const AUTO_KINDS = new Set(['date']);
 
 /** Choice fields: the value must be one the SENDER offered, or nothing. */
 const CHOICE_KINDS = new Set(['dropdown', 'radio']);
 
 export interface SignerFacts {
-  recipientName: string | null;
-  recipientEmail: string;
   /** The authoritative signing moment (what the certificate records). */
   signedAt: Date;
 }
 
-function splitName(full: string): { first: string; last: string } {
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { first: '', last: '' };
-  if (parts.length === 1) return { first: parts[0]!, last: '' };
-  return { first: parts[0]!, last: parts.slice(1).join(' ') };
-}
-
 /** The server's own value for an auto field. */
 function autoValue(type: string, facts: SignerFacts): string {
-  const full = facts.recipientName?.trim() ?? '';
-  switch (type) {
-    case 'date':
-      // ISO date — unambiguous, and it matches the certificate's timeline.
-      return facts.signedAt.toISOString().slice(0, 10);
-    case 'email':
-      return facts.recipientEmail;
-    case 'name':
-      return full || facts.recipientEmail;
-    case 'first_name':
-      return splitName(full).first;
-    case 'last_name':
-      return splitName(full).last;
-    default:
-      return '';
-  }
+  // ISO date — unambiguous, and it matches the certificate's timeline.
+  return type === 'date' ? facts.signedAt.toISOString().slice(0, 10) : '';
 }
 
 export interface ResolvedFieldValues {
-  /** What to store and stamp — server truth for auto fields. */
+  /** What to store and stamp — server truth for Date Signed. */
   values: Record<string, string>;
   /** Required fields the signer left empty (server-side enforcement). */
   missingRequired: string[];
+  /** Fields whose value breaks their rule — only reachable by bypassing the signing app. */
+  invalid: string[];
 }
 
 /**
  * Merge the signer's submission with server truth, keyed by the SNAPSHOT.
- * Client values survive only for input-kind fields that exist in the snapshot.
+ * Client values survive only for input fields that exist in the snapshot, and
+ * only when they pass their field's rule.
  */
 export function resolveFieldValues(
   fields: TemplateField[],
@@ -90,6 +64,7 @@ export function resolveFieldValues(
 ): ResolvedFieldValues {
   const values: Record<string, string> = {};
   const missingRequired: string[] = [];
+  const invalid: string[] = [];
 
   for (const field of fields) {
     if (IMAGE_KINDS.has(field.type)) continue; // the signature image, not text
@@ -99,23 +74,30 @@ export function resolveFieldValues(
       continue;
     }
 
-    if (!INPUT_KINDS.has(field.type)) continue; // unknown type: stamp nothing
+    // The signer authors every type that has a rule. FIELD_VALUE_RULES is
+    // exhaustive over FieldType, so no type exists without that decision.
+    if (!FIELD_VALUE_RULES[field.type]) continue; // no rule: nothing typed is stamped
 
     const supplied = clientValues[field.id];
-    let value = typeof supplied === 'string' ? supplied.slice(0, 500) : '';
+    const value = typeof supplied === 'string' ? supplied.trim() : '';
+
+    if (!value) {
+      // A required input the signer left blank must not reach a sealed document.
+      if (field.required) missingRequired.push(field.id);
+      continue;
+    }
 
     // A choice field can only ever hold one of the options the SENDER offered.
     // Without this the signer could type any string into a "dropdown" and have
     // it stamped, hashed and sealed as if it were an offered answer.
-    if (value && CHOICE_KINDS.has(field.type)) {
-      const allowed = field.options ?? [];
-      if (!allowed.includes(value)) value = '';
+    const offered = !CHOICE_KINDS.has(field.type) || (field.options ?? []).includes(value);
+    if (!offered || fieldValueProblem(field.type, value) !== null) {
+      invalid.push(field.id);
+      continue;
     }
 
-    if (value) values[field.id] = value;
-    // A required input the signer left blank must not reach a sealed document.
-    if (field.required && !value) missingRequired.push(field.id);
+    values[field.id] = value;
   }
 
-  return { values, missingRequired };
+  return { values, missingRequired, invalid };
 }

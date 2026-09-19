@@ -1,19 +1,20 @@
-import type { SignerView, TemplateField } from '@docflow/contracts';
+import { FIELD_VALUE_RULES, fieldValueProblem, type TemplateField } from '@docflow/contracts';
 
 /**
- * What each of the 12 field types means to the SIGNER — which they must act on,
- * which auto-fill, which are optional inputs. Pure functions so the completion
- * rule is testable directly.
+ * What each field type means to the SIGNER — which they must act on, which the
+ * system fills, which they type. Pure functions so the completion rule is
+ * testable directly.
  */
 const SIGNATURE_KINDS = new Set(['signature', 'initial', 'stamp']);
-const AUTO_KINDS = new Set(['date', 'name', 'first_name', 'last_name', 'email']);
+/** Only Date Signed: the SERVER stamps the moment of signing; nobody types it. */
+const AUTO_KINDS = new Set(['date']);
 
 export type FieldKind = 'signature' | 'auto' | 'input';
 
 export function fieldKind(field: TemplateField): FieldKind {
   if (SIGNATURE_KINDS.has(field.type)) return 'signature';
   if (AUTO_KINDS.has(field.type)) return 'auto';
-  // company, title, text, number, phone, address, checkbox, dropdown, radio
+  // Everything else is typed by the signer — names and email included.
   return 'input';
 }
 
@@ -37,6 +38,7 @@ export function fieldLabel(field: TemplateField): string {
     checkbox: 'Checkbox',
     dropdown: 'Dropdown',
     radio: 'Choice',
+    date_input: 'Date',
   };
   return field.label?.trim() || named[field.type] || 'Field';
 }
@@ -46,45 +48,38 @@ export function fieldKey(field: TemplateField, index: number): string {
   return field.id ?? `${field.type}-${field.page}-${index}`;
 }
 
-function splitName(full: string): { first: string; last: string } {
-  const parts = full.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { first: '', last: '' };
-  if (parts.length === 1) return { first: parts[0]!, last: '' };
-  return { first: parts[0]!, last: parts.slice(1).join(' ') };
-}
-
-/** Values we can fill without asking. `signedOn` passed in for stable tests. */
-export function autoValue(
-  field: TemplateField,
-  view: Pick<SignerView, 'recipientName' | 'signerEmail'>,
-  signedOn: string,
-): string {
-  const full = view.recipientName?.trim() || '';
-  switch (field.type) {
-    case 'date':
-      return signedOn;
-    case 'email':
-      return view.signerEmail;
-    case 'name':
-      return full || view.signerEmail;
-    case 'first_name':
-      return splitName(full).first;
-    case 'last_name':
-      return splitName(full).last;
-    default:
-      return '';
-  }
+/**
+ * Date Signed as shown while signing. The server stamps its own clock, never
+ * this string. `signedOn` is passed in for stable tests.
+ */
+export function autoValue(field: TemplateField, signedOn: string): string {
+  return field.type === 'date' ? signedOn : '';
 }
 
 /**
- * Which fields still block completion: anything the sender marked `required`
- * that the signer hasn't filled — signature boxes AND required inputs alike.
- *
- * This deliberately mirrors the server's own check in field-values.ts. If the
- * two disagreed, the signer would press Finish on a form that looks complete
- * and be refused by the API with nothing on screen explaining why.
- * Auto fields are excluded: the SERVER supplies those, so the signer can
- * never be the reason one is missing.
+ * Why this box's value cannot be submitted, in words the signer can act on —
+ * or null. The SAME rules the API applies on submit (FIELD_VALUE_RULES in
+ * @docflow/contracts), plus the sender's option list for choices. If the two
+ * sides disagreed, the API would refuse a form that looks fine here — and on
+ * the signing surface every refusal is the same "link not valid" page, so the
+ * signer would lose the ceremony with no idea why.
+ */
+export function fieldProblem(field: TemplateField, value: string): string | null {
+  if (fieldKind(field) !== 'input') return null;
+  const v = value.trim();
+  if (!v) return null;
+  if ((field.type === 'dropdown' || field.type === 'radio') && !(field.options ?? []).includes(v)) {
+    return FIELD_VALUE_RULES[field.type]?.hint ?? 'Choose one of the offered options';
+  }
+  return fieldValueProblem(field.type, v);
+}
+
+/**
+ * Required boxes the signer hasn't filled — signature boxes and inputs alike.
+ * Blank means blank after trimming, as it does on the server: a box holding
+ * only spaces would otherwise look done here and be refused there.
+ * Date Signed is excluded: the SERVER supplies it, so the signer can never be
+ * the reason it is missing.
  */
 export function unsignedFields(
   fields: TemplateField[],
@@ -93,12 +88,30 @@ export function unsignedFields(
   return fields.filter((f, i) => {
     if (!f.required) return false;
     if (fieldKind(f) === 'auto') return false;
-    return !filled[fieldKey(f, i)];
+    return !filled[fieldKey(f, i)]?.trim();
   });
 }
 
+/** Boxes holding a value their field's rule refuses. */
+export function invalidFields(
+  fields: TemplateField[],
+  filled: Record<string, string>,
+): TemplateField[] {
+  return fields.filter((f, i) => fieldProblem(f, filled[fieldKey(f, i)] ?? '') !== null);
+}
+
+/** Everything standing between the signer and Finish, in document order. */
+export function blockingFields(
+  fields: TemplateField[],
+  filled: Record<string, string>,
+): TemplateField[] {
+  const unsigned = new Set(unsignedFields(fields, filled));
+  const invalid = new Set(invalidFields(fields, filled));
+  return fields.filter((f) => unsigned.has(f) || invalid.has(f));
+}
+
 export function canFinish(fields: TemplateField[], filled: Record<string, string>): boolean {
-  return unsignedFields(fields, filled).length === 0;
+  return blockingFields(fields, filled).length === 0;
 }
 
 export function signatureProgress(

@@ -282,9 +282,14 @@ export type PublicVerifyResult = z.infer<typeof PublicVerifyResultSchema>;
  * The field types a sender can place. Three families, and the distinction is
  * a security boundary, not a UI one:
  *   - marks   (signature/initial/stamp) take the adopted signature image;
- *   - auto    (date/name/first_name/last_name/email) are computed by the
- *             SERVER from the request row and never accepted from the client;
- *   - inputs  (the rest) are genuinely authored by the signer.
+ *   - auto    (date, shown as "Date Signed") is computed by the SERVER from the
+ *             signing moment and never accepted from the client;
+ *   - inputs  (every other type) are authored by the signer, and each must
+ *             pass its FIELD_VALUE_RULES entry below.
+ * name/first_name/last_name/email were auto until 2026-09; the signer types
+ * them now (a product decision). The certificate — the invited address and
+ * possession of its link — is what proves who signed; those boxes are the
+ * signer's own statement, like any other input.
  * See apps/api/src/modules/signing/field-values.ts — that file is the one that
  * decides, and this list must stay in step with it.
  */
@@ -306,8 +311,174 @@ export const FieldTypeSchema = z.enum([
   'checkbox',
   'dropdown',
   'radio',
+  // A date the signer picks (a start date, a birth date). Not Date Signed —
+  // that is `date`, and it stays server truth.
+  'date_input',
 ]);
 export type FieldType = z.infer<typeof FieldTypeSchema>;
+
+// ── What a signer may enter into each box ───────────────────────────────────
+
+/**
+ * Characters the sealed PDF can print. Stamping draws with a standard WinAnsi
+ * font (toPdfSafeText in @docflow/crypto), which turns anything else into '?'
+ * — so a value outside this set would reach a legal document as marks the
+ * signer never saw. Refusing it at the box, where it can still be fixed, is
+ * the honest answer until a Unicode font lands. Mirrors toPdfSafeText's
+ * pass-through ranges and transliterations; a test in apps/api pins the two
+ * together.
+ */
+const PRINTABLE =
+  /^[\x20-\x7E\xA0-\xFF‘’“”–—…•ʻʼ]*$/;
+
+/**
+ * A person's name the stamper can print: Latin letters (accents included) and
+ * the joins names really use — space, hyphen, full stop, and every apostrophe
+ * Uzbek is typed with (' ` ‘ ’ ʻ ʼ — oʻ and gʻ are letters there). At least one
+ * letter, so a box of punctuation is not a name.
+ */
+const PERSON_NAME =
+  /^(?=.*[A-Za-z\xC0-\xD6\xD8-\xF6\xF8-\xFF])[A-Za-z\xC0-\xD6\xD8-\xF6\xF8-\xFF '`‘’ʻʼ.-]+$/;
+
+/**
+ * What may be TYPED into a name box. Letters of any script get through, so a
+ * Cyrillic name appears and is explained instead of silently vanishing;
+ * digits and symbols never belong in a name and are dropped as typed.
+ */
+const NAME_CHAR = /[\p{L}\p{M} '`‘’.-]/u;
+
+/** The range a Date box accepts — also the calendar picker's min and max. */
+export const DATE_INPUT_MIN = '1900-01-01';
+export const DATE_INPUT_MAX = '2200-12-31';
+
+/** YYYY-MM-DD naming a day that exists (no 30 February), inside the range above. */
+function isCalendarDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m || value < DATE_INPUT_MIN || value > DATE_INPUT_MAX) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === mo - 1 && day.getUTCDate() === d;
+}
+
+export interface FieldValueRule {
+  /** Longest accepted value, in characters, after trimming. */
+  max: number;
+  /** The whole value — trimmed, and never empty (empty is "not filled"). */
+  valid: z.ZodType<string>;
+  /** Characters dropped as they are typed: ones no valid value can contain. */
+  chars?: RegExp;
+  /** What the box accepts, in words: the signer's error, the sender's description. */
+  hint: string;
+}
+
+const printable = (max: number): FieldValueRule => ({
+  max,
+  valid: z.string().regex(PRINTABLE),
+  hint: 'Latin letters, numbers and punctuation only',
+});
+
+const personName = (max: number): FieldValueRule => ({
+  max,
+  valid: z.string().regex(PERSON_NAME),
+  chars: NAME_CHAR,
+  hint: 'Latin letters only — spaces, hyphens and apostrophes are fine',
+});
+
+const choice: FieldValueRule = {
+  // Membership in the sender's options needs the field itself, so the API
+  // checks that (field-values.ts). Here: only the length the editor allows.
+  max: 120,
+  valid: z.string(),
+  hint: 'Choose one of the offered options',
+};
+
+/**
+ * What a signer may enter into each box — ONE definition for both sides: the
+ * signing app drops impossible characters as they are typed and explains a
+ * bad value on the spot; the API refuses the same value when the browser was
+ * bypassed. Exhaustive over FieldType on purpose: a new type does not compile
+ * until someone decides whether the signer types it (a rule) or not (null).
+ * Marks and Date Signed are null — nothing typed ever reaches them.
+ */
+export const FIELD_VALUE_RULES: Record<FieldType, FieldValueRule | null> = {
+  signature: null,
+  initial: null,
+  stamp: null,
+  date: null,
+  name: personName(100),
+  first_name: personName(60),
+  last_name: personName(60),
+  email: {
+    max: 254,
+    valid: z.email(),
+    chars: /\S/,
+    hint: 'An email address, like name@example.com',
+  },
+  company: printable(200),
+  title: printable(120),
+  text: printable(500),
+  number: {
+    max: 30,
+    // An optional minus, digits, and at most one decimal mark — a full stop,
+    // or the comma Uzbek and Russian write decimals with.
+    valid: z.string().regex(/^-?\d+(?:[.,]\d+)?$/),
+    chars: /[\d.,-]/,
+    hint: 'Numbers only, like 42 or 3.5',
+  },
+  phone: {
+    max: 30,
+    // E.164 caps a number at 15 digits; under 7 reaches no one anywhere.
+    valid: z
+      .string()
+      .regex(/^\+?[\d ()-]+$/)
+      .refine((v) => {
+        const digits = v.replace(/\D/g, '').length;
+        return digits >= 7 && digits <= 15;
+      }),
+    chars: /[\d+() -]/,
+    hint: 'A phone number, like +998 90 123 45 67',
+  },
+  address: printable(300),
+  checkbox: {
+    max: 4,
+    valid: z.string().refine((v) => v === 'true'),
+    hint: 'Tick the box',
+  },
+  dropdown: choice,
+  radio: choice,
+  date_input: {
+    max: 10,
+    valid: z.string().refine(isCalendarDate),
+    hint: 'A date, picked from the calendar',
+  },
+};
+
+/**
+ * Why `value` cannot go into a box of `type`, in words the signer can act on —
+ * or null when it can. Checks the TRIMMED value. Empty passes: "not filled" is
+ * the required check's business, not this one's. Types with no rule (marks,
+ * Date Signed) answer null, because nothing typed ever reaches them.
+ */
+export function fieldValueProblem(type: FieldType, value: string): string | null {
+  const rule = FIELD_VALUE_RULES[type];
+  const v = value.trim();
+  if (!rule || v === '') return null;
+  if (v.length > rule.max || !rule.valid.safeParse(v).success) return rule.hint;
+  return null;
+}
+
+/**
+ * `raw` as the box should hold it while the signer types: characters no valid
+ * value can contain are dropped, and it is capped at the box's length. A letter
+ * typed into a Number box simply never appears.
+ */
+export function sanitizeFieldInput(type: FieldType, raw: string): string {
+  const rule = FIELD_VALUE_RULES[type];
+  if (!rule) return raw;
+  const chars = rule.chars;
+  const kept = chars ? Array.from(raw).filter((ch) => chars.test(ch)).join('') : raw;
+  return kept.slice(0, rule.max);
+}
 
 const fraction = z.number().min(0).max(1);
 
@@ -425,7 +596,7 @@ export type DocumentList = z.infer<typeof DocumentListSchema>;
 export const SignerViewSchema = z.object({
   documentName: z.string(),
   recipientName: z.string().nullable(),
-  /** The signer's own email — used to auto-fill email/name fields. */
+  /** The signer's own address — for the completion screen. Never typed into a box for them. */
   signerEmail: z.email(),
   pageCount: z.number().int().positive(),
   pageSizes: z.array(PageSizeSchema),
@@ -447,9 +618,9 @@ export type SignatureMethod = z.infer<typeof SignatureMethodSchema>;
 
 /**
  * The signer's submission: the adopted-signature PNG plus the values they
- * entered/auto-filled for non-signature fields (keyed by field id). Consent is
- * recorded separately, before this, so the evidence never claims a signature
- * predating consent.
+ * entered for non-signature fields (keyed by field id), each checked against
+ * FIELD_VALUE_RULES when it arrives. Consent is recorded separately, before
+ * this, so the evidence never claims a signature predating consent.
  */
 export const SubmitSignatureSchema = z.object({
   method: SignatureMethodSchema,

@@ -61,7 +61,7 @@ describe('TemplateFieldSchema', () => {
     expect(FieldTypeSchema.options).toEqual([
       'signature', 'initial', 'stamp', 'date', 'name', 'first_name',
       'last_name', 'email', 'company', 'title', 'text', 'number',
-      'phone', 'address', 'checkbox', 'dropdown', 'radio',
+      'phone', 'address', 'checkbox', 'dropdown', 'radio', 'date_input',
     ]);
   });
 });

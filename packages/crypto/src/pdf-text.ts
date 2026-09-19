@@ -26,6 +26,10 @@ const TRANSLITERATIONS: Record<string, string> = {
   '…': '...',
   ' ': ' ',
   '•': '-',
+  // Uzbek Latin writes oʻ and gʻ with the modifier letter turned comma (U+02BB);
+  // U+02BC is its usual stand-in. Both print as an apostrophe.
+  'ʻ': "'",
+  'ʼ': "'",
 };
 
 /**

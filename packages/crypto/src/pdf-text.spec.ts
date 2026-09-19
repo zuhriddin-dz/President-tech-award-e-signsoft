@@ -13,6 +13,11 @@ describe('toPdfSafeText', () => {
     expect(toPdfSafeText('a—b…')).toBe('a-b...');
   });
 
+  it('prints the apostrophes Uzbek Latin is written with — a name must not stamp as "O?ktam"', () => {
+    expect(toPdfSafeText('Oʻktam Gʻulomov')).toBe("O'ktam G'ulomov");
+    expect(toPdfSafeText('Oʼktam')).toBe("O'ktam");
+  });
+
   it('replaces unrepresentable characters with ? instead of throwing', () => {
     // These are exactly the inputs that make pdf-lib throw and would wedge a token.
     expect(toPdfSafeText('日本語')).toBe('???');

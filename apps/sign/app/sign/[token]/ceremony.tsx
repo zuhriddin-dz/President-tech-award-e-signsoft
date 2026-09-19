@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import {
   CircleCheck,
@@ -15,14 +15,24 @@ import {
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
-import { SignerViewSchema, type SignerView, type TemplateField } from '@docflow/contracts';
+import {
+  DATE_INPUT_MAX,
+  DATE_INPUT_MIN,
+  FIELD_VALUE_RULES,
+  SignerViewSchema,
+  sanitizeFieldInput,
+  type FieldType,
+  type SignerView,
+  type TemplateField,
+} from '@docflow/contracts';
 import {
   autoValue,
+  blockingFields,
   canFinish,
   fieldKey,
   fieldKind,
   fieldLabel,
-  unsignedFields,
+  fieldProblem,
 } from '@/lib/sign-fields';
 import { Mark } from '@/components/brand/logo';
 import { AdoptSignatureDialog, type AdoptedSignature } from './adopt-signature-dialog';
@@ -39,6 +49,23 @@ import { CompletionFlow } from './completion-flow';
  */
 const BASE_WIDTH = 820;
 const ZOOM_STEPS = [0.6, 0.8, 1, 1.25, 1.5, 2];
+
+/**
+ * How each typed box presents itself to the browser: the keyboard a phone
+ * shows, and the native calendar for a Date. Presentation only — what a box
+ * ACCEPTS is FIELD_VALUE_RULES, enforced as the signer types and again by the API.
+ */
+const INPUT_TYPE: Partial<Record<FieldType, string>> = {
+  email: 'email',
+  phone: 'tel',
+  date_input: 'date',
+};
+const INPUT_MODE: Partial<Record<FieldType, React.HTMLAttributes<HTMLInputElement>['inputMode']>> =
+  {
+    number: 'decimal',
+    phone: 'tel',
+    email: 'email',
+  };
 
 type PageSize = { width: number; height: number; scale: number };
 
@@ -94,7 +121,9 @@ export function Ceremony({ token }: { token: string }) {
     };
   }, [token]);
 
-  // Prefill everything we already know, once the document is known.
+  // Show Date Signed — the one box the system fills. Every other box starts
+  // empty and is the signer's to fill; the server stamps its own clock, not
+  // this display string.
   useEffect(() => {
     if (!view) return;
     setFilled((prev) => {
@@ -102,7 +131,7 @@ export function Ceremony({ token }: { token: string }) {
       fields.forEach((f, i) => {
         if (fieldKind(f) !== 'auto') return;
         const key = fieldKey(f, i);
-        if (!next[key]) next[key] = autoValue(f, view, signedOn);
+        if (!next[key]) next[key] = autoValue(f, signedOn);
       });
       return next;
     });
@@ -291,10 +320,15 @@ export function Ceremony({ token }: { token: string }) {
     }
   }
 
-  /** Everything the SIGNER has to deal with — auto fields are the server's. */
+  /** Everything the SIGNER has to deal with — Date Signed is the server's. */
   const actionable = useMemo(() => fields.filter((f) => fieldKind(f) !== 'auto'), [fields]);
-  const filledCount = actionable.filter((f) => filled[fieldKey(f, fields.indexOf(f))]).length;
-  const remaining = unsignedFields(fields, filled);
+  /** Done means filled AND acceptable — a Number box holding "abc" is not done. */
+  const fieldDone = (f: TemplateField): boolean => {
+    const value = filled[fieldKey(f, fields.indexOf(f))] ?? '';
+    return value.trim() !== '' && fieldProblem(f, value) === null;
+  };
+  const filledCount = actionable.filter(fieldDone).length;
+  const remaining = blockingFields(fields, filled);
   const ready = canFinish(fields, filled) && Boolean(adopted);
 
   const goToField = useCallback(
@@ -507,7 +541,7 @@ export function Ceremony({ token }: { token: string }) {
                         key={key}
                         id={`field-${key}`}
                         style={style}
-                        title="Filled in by E-SIGNSOFT from the verified recipient"
+                        title="Filled in by E-SIGNSOFT with the day you sign"
                         className="absolute flex items-center overflow-hidden rounded bg-surface-sunken/70 px-1 text-[12px] whitespace-nowrap text-ink"
                       >
                         {value}
@@ -557,22 +591,51 @@ export function Ceremony({ token }: { token: string }) {
                     );
                   }
 
+                  // A typed box. Characters no valid value can contain are
+                  // dropped as they are typed; a value that is still wrong turns
+                  // the box red, with the reason under it while it is active.
+                  // The API applies the same rule on submit, so what passes here
+                  // passes there. autoComplete is off because the browser must
+                  // not fill boxes in either — the signer types them.
+                  const rule = FIELD_VALUE_RULES[f.type];
+                  const problem = fieldProblem(f, value);
                   return (
-                    <input
-                      key={key}
-                      id={`field-${key}`}
-                      aria-label={fieldLabel(f)}
-                      value={value}
-                      maxLength={200}
-                      inputMode={f.type === 'number' ? 'numeric' : undefined}
-                      placeholder={f.required ? `${fieldLabel(f)} *` : fieldLabel(f)}
-                      onFocus={() => setActiveField(key)}
-                      onChange={(e) => setFilled((prev) => ({ ...prev, [key]: e.target.value }))}
-                      style={style}
-                      className={`absolute rounded border bg-action-soft px-1 text-[12px] text-ink outline-none placeholder:text-ink-faint ${
-                        active ? 'border-brand' : 'border-action'
-                      }`}
-                    />
+                    <Fragment key={key}>
+                      <input
+                        id={`field-${key}`}
+                        type={INPUT_TYPE[f.type] ?? 'text'}
+                        inputMode={INPUT_MODE[f.type]}
+                        autoComplete="off"
+                        aria-label={fieldLabel(f)}
+                        aria-invalid={problem ? true : undefined}
+                        title={problem ?? undefined}
+                        value={value}
+                        maxLength={rule?.max}
+                        min={f.type === 'date_input' ? DATE_INPUT_MIN : undefined}
+                        max={f.type === 'date_input' ? DATE_INPUT_MAX : undefined}
+                        placeholder={f.required ? `${fieldLabel(f)} *` : fieldLabel(f)}
+                        onFocus={() => setActiveField(key)}
+                        onChange={(e) =>
+                          setFilled((prev) => ({
+                            ...prev,
+                            [key]: sanitizeFieldInput(f.type, e.target.value),
+                          }))
+                        }
+                        style={style}
+                        className={`absolute rounded border bg-action-soft px-1 text-[12px] text-ink outline-none placeholder:text-ink-faint ${
+                          problem ? 'border-danger' : active ? 'border-brand' : 'border-action'
+                        }`}
+                      />
+                      {active && problem && (
+                        <p
+                          role="alert"
+                          style={{ left: style.left, top: style.top + style.height + 2 }}
+                          className="absolute z-10 max-w-64 rounded bg-danger px-1.5 py-0.5 text-[11px] leading-snug text-white shadow"
+                        >
+                          {problem}
+                        </p>
+                      )}
+                    </Fragment>
                   );
                 })}
             </div>
@@ -597,7 +660,7 @@ export function Ceremony({ token }: { token: string }) {
             <ol className="thin-scroll max-h-[60vh] overflow-y-auto p-2">
               {actionable.map((f) => {
                 const key = fieldKey(f, fields.indexOf(f));
-                const isDone = Boolean(filled[key]);
+                const isDone = fieldDone(f);
                 return (
                   <li key={key}>
                     <button

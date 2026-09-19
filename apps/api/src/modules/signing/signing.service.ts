@@ -408,16 +408,14 @@ export class SigningService {
     if (!png) notValid();
 
     const now = new Date();
-    // The signer does NOT get to author the date/name/email that end up in the
-    // sealed document — those are computed here from the request row. Client
-    // values survive only for genuinely free-form inputs, and only for fields
-    // the snapshot knows. Required inputs must be filled.
-    const resolved = resolveFieldValues(req.fields, dto.fieldValues, {
-      recipientName: req.recipientName,
-      recipientEmail: req.recipientEmail,
-      signedAt: now,
-    });
-    if (resolved.missingRequired.length > 0) notValid();
+    // Date Signed is computed here from the server clock — the signer never
+    // authors the moment of signing. Every other value is the signer's input,
+    // kept only for fields the snapshot knows and only when it passes its
+    // field's rule. The signing app enforces the same rules as the signer
+    // types, so a refusal here means the browser was bypassed — which is why it
+    // is the uniform 404 and not a message. Required inputs must be filled.
+    const resolved = resolveFieldValues(req.fields, dto.fieldValues, { signedAt: now });
+    if (resolved.missingRequired.length > 0 || resolved.invalid.length > 0) notValid();
 
     // Bytes land in storage first; a crash before the claim leaves an orphan
     // object (lifecycle-swept), never a claimed request with no signature.

@@ -1,6 +1,7 @@
 'use client';
 
 import { Plus, Trash2, X } from 'lucide-react';
+import { FIELD_VALUE_RULES } from '@docflow/contracts';
 import { Avatar, Button } from '@/components/ui/primitives';
 import { FIELD_META, isChoice } from '@/lib/field-catalog';
 import { indexOfKey, recipientLabel, type EditorRecipient } from './recipients';
@@ -9,8 +10,8 @@ import type { EditorField } from './editor';
 /**
  * Properties for the selected field. Which controls appear depends on the
  * field's FAMILY, because that is what determines who supplies its value:
- * an auto field is filled by the server from the verified recipient, so
- * "required" and free-text options would be meaningless on it.
+ * the auto field (Date Signed) is filled by the server with the signing
+ * moment, so "required" and free-text options would be meaningless on it.
  */
 export function FieldProperties({
   field,
@@ -27,6 +28,11 @@ export function FieldProperties({
 }) {
   const meta = FIELD_META[field.type];
   const options = field.options ?? [];
+  // What the signer is allowed to enter, as the signing app will enforce it —
+  // shown so the sender is not surprised by what comes back. Choices and
+  // checkboxes explain themselves.
+  const accepts =
+    !isChoice(field.type) && field.type !== 'checkbox' ? FIELD_VALUE_RULES[field.type]?.hint : null;
 
   function setOption(i: number, value: string) {
     onChange({ options: options.map((o, idx) => (idx === i ? value : o)) });
@@ -80,23 +86,28 @@ export function FieldProperties({
 
       {meta.family === 'auto' ? (
         <p className="mt-5 rounded-lg border border-border bg-surface-muted p-3 text-sm text-ink-muted">
-          E-SIGNSOFT fills this in from the recipient we verified — the signer cannot type over it.
-          That is what makes the value on the finished document trustworthy.
+          E-SIGNSOFT fills in the day the document is signed — the signer cannot change it. That is
+          what makes the date on the finished document trustworthy.
         </p>
       ) : meta.family === 'mark' ? (
         <p className="mt-5 rounded-lg border border-border bg-surface-muted p-3 text-sm text-ink-muted">
           The signer&apos;s adopted signature is placed here, scaled to fit without distorting it.
         </p>
       ) : (
-        <label className="mt-5 flex items-center gap-2.5">
-          <input
-            type="checkbox"
-            checked={field.required}
-            onChange={(e) => onChange({ required: e.target.checked })}
-            className="h-4 w-4 accent-brand"
-          />
-          <span className="text-sm text-ink">Required — they cannot finish without it</span>
-        </label>
+        <>
+          <label className="mt-5 flex items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={field.required}
+              onChange={(e) => onChange({ required: e.target.checked })}
+              className="h-4 w-4 accent-brand"
+            />
+            <span className="text-sm text-ink">Required — they cannot finish without it</span>
+          </label>
+          {accepts && (
+            <p className="mt-2 text-xs text-ink-muted">What the signer can enter: {accepts}</p>
+          )}
+        </>
       )}
 
       {isChoice(field.type) && (
