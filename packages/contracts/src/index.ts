@@ -16,6 +16,34 @@ export type MembershipRole = z.infer<typeof MembershipRoleSchema>;
 export const TenantKindSchema = z.enum(['personal', 'company']);
 export type TenantKind = z.infer<typeof TenantKindSchema>;
 
+/**
+ * What a workspace is entitled to. `pro` is granted BY HAND today — there is no
+ * checkout, so nothing a user can click sets it (packages/db/scripts/set-plan.mjs).
+ */
+export const TenantPlanSchema = z.enum(['trial', 'pro']);
+export type TenantPlan = z.infer<typeof TenantPlanSchema>;
+
+/** How long a new workspace gets for free. The deadline itself is stamped by the database. */
+export const TRIAL_DAYS = 7;
+
+/**
+ * Where a workspace stands, decided by the SERVER and read by the shell:
+ *   'trial' — inside the free window; `daysLeft` counts down.
+ *   'ended' — the window closed. The product is locked to the Get Pro page, and
+ *             the API refuses everything except reading the workspace and
+ *             downloading what is already signed.
+ *   'pro'   — paid.
+ * The browser is told this so it can show the right screen; it is never what
+ * enforces it — the API decides again on every request.
+ */
+export const TenantAccessSchema = z.object({
+  state: z.enum(['trial', 'ended', 'pro']),
+  /** Whole days left in the trial: 0 once it has ended, and on a pro workspace. */
+  daysLeft: z.number().int().nonnegative(),
+  trialEndsAt: z.iso.datetime(),
+});
+export type TenantAccess = z.infer<typeof TenantAccessSchema>;
+
 export const MeResponseSchema = z.object({
   userId: z.uuid(),
   role: MembershipRoleSchema,
@@ -24,8 +52,10 @@ export const MeResponseSchema = z.object({
       id: z.uuid(),
       name: z.string(),
       kind: TenantKindSchema,
-      /** When the workspace was created — drives the trial countdown. */
+      /** When the workspace was created. */
       createdAt: z.iso.datetime(),
+      plan: TenantPlanSchema,
+      access: TenantAccessSchema,
     })
     .nullable(),
 });

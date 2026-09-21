@@ -19,7 +19,7 @@ import {
   type SendRequest,
   type VerifyResult,
 } from '@docflow/contracts';
-import { Policy } from '../../common/policy.js';
+import { AllowWhenLocked, Policy } from '../../common/policy.js';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
 import {
@@ -45,8 +45,13 @@ export class SignatureRequestsController {
     return this.requests.send(body, senderName);
   }
 
+  /**
+   * Readable on a locked workspace: it is the list the Get Pro screen shows so
+   * a customer whose trial ended can still find and download what they signed.
+   */
   @Get()
   @Policy('viewer')
+  @AllowWhenLocked()
   async list(): Promise<{ requests: SignatureRequestWire[] }> {
     return { requests: await this.requests.list() };
   }
@@ -59,8 +64,11 @@ export class SignatureRequestsController {
     return this.requests.detail(id);
   }
 
+  // A signed agreement is the customer's own evidence. An unpaid invoice is
+  // not a reason to hold it, so this stays open when the trial ends.
   @Get(':id/signed')
   @Policy('viewer')
+  @AllowWhenLocked()
   @Header('Cache-Control', 'no-store')
   async signed(
     @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,
@@ -73,8 +81,11 @@ export class SignatureRequestsController {
     });
   }
 
+  // Same reasoning as the signed copy: the certificate is what makes it
+  // provable, and the two are only evidence together.
   @Get(':id/certificate')
   @Policy('viewer')
+  @AllowWhenLocked()
   @Header('Cache-Control', 'no-store')
   async certificate(
     @Param('id', new ParseUUIDPipe({ errorHttpStatusCode: 404 })) id: string,

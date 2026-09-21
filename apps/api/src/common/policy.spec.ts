@@ -1,4 +1,9 @@
-import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
@@ -7,7 +12,13 @@ import type { ClerkService } from '../auth/clerk.service.js';
 import type { TenantSyncService } from '../tenant/tenant-sync.service.js';
 import type { RequestAuth, TenantContext } from '../tenant/tenant-context.js';
 import type { QueueService } from '../queue/queue.service.js';
-import { Policy, PolicyGuard, POLICY_KEY, SOURCE_MAX_PER_MINUTE } from './policy.js';
+import {
+  ALLOW_WHEN_LOCKED_KEY,
+  Policy,
+  PolicyGuard,
+  POLICY_KEY,
+  SOURCE_MAX_PER_MINUTE,
+} from './policy.js';
 
 const identity: VerifiedIdentity = {
   clerkUserId: 'user_1',
@@ -17,11 +28,20 @@ const identity: VerifiedIdentity = {
   role: 'VIEWER',
 };
 
-function guardWith(role: RequestAuth['role']): PolicyGuard {
+function guardWith(
+  role: RequestAuth['role'],
+  entitlement?: RequestAuth['entitlement'],
+): PolicyGuard {
   const clerk = { verifyBearer: async () => ({ ...identity, role }) } as unknown as ClerkService;
   const sync = {
     establish: async (id: VerifiedIdentity) =>
-      ({ userId: 'u', clerkUserId: id.clerkUserId, tenantId: 't', role: id.role }) as RequestAuth,
+      ({
+        userId: 'u',
+        clerkUserId: id.clerkUserId,
+        tenantId: 't',
+        role: id.role,
+        ...(entitlement ? { entitlement } : {}),
+      }) as RequestAuth,
   } as unknown as TenantSyncService;
   const tenantContext = { setIdentity: () => {} } as unknown as TenantContext;
   // No Redis in a unit test: the shared window degrades to its in-process
@@ -54,6 +74,13 @@ function publicContext(
 function declared(policy: string): object {
   const handler = () => {};
   Reflect.defineMetadata(POLICY_KEY, policy, handler);
+  return handler;
+}
+
+/** A route that stays open once the trial has ended (@AllowWhenLocked). */
+function declaredOpenWhenLocked(policy: string): object {
+  const handler = declared(policy);
+  Reflect.defineMetadata(ALLOW_WHEN_LOCKED_KEY, true, handler);
   return handler;
 }
 
@@ -92,6 +119,59 @@ describe('default-deny policy guard', () => {
     await expect(
       guardWith('OWNER').canActivate(contextFor(declared('superuser'), 'Bearer t')),
     ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+/**
+ * The trial gate. It lives in the guard so a tenant route is covered the day it
+ * is written — these pin that an unmarked route is CLOSED to a lapsed
+ * workspace, and that the gate reaches nobody it should not.
+ */
+describe('trial gate', () => {
+  const DAY = 86_400_000;
+  const ended = { plan: 'trial' as const, trialEndsAt: new Date(Date.now() - DAY) };
+  const running = { plan: 'trial' as const, trialEndsAt: new Date(Date.now() + 3 * DAY) };
+  const paid = { plan: 'pro' as const, trialEndsAt: new Date(Date.now() - 90 * DAY) };
+
+  it('refuses an ordinary route once the trial has ended — 402 with a code the shell reads', async () => {
+    const err = await guardWith('OWNER', ended)
+      .canActivate(contextFor(declared('member'), 'Bearer t'))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(402);
+    expect((err as HttpException).getResponse()).toMatchObject({ code: 'TRIAL_ENDED' });
+  });
+
+  it('keeps a route marked @AllowWhenLocked open, so signed documents can still be fetched', async () => {
+    await expect(
+      guardWith('OWNER', ended).canActivate(contextFor(declaredOpenWhenLocked('viewer'), 'Bearer t')),
+    ).resolves.toBe(true);
+  });
+
+  it('lets a workspace still inside its trial do everything', async () => {
+    await expect(
+      guardWith('OWNER', running).canActivate(contextFor(declared('member'), 'Bearer t')),
+    ).resolves.toBe(true);
+  });
+
+  it('never locks a pro workspace, whatever its old trial date says', async () => {
+    await expect(
+      guardWith('OWNER', paid).canActivate(contextFor(declared('member'), 'Bearer t')),
+    ).resolves.toBe(true);
+  });
+
+  it('checks the role FIRST: a lapsed viewer on an admin route is refused as a viewer', async () => {
+    await expect(
+      guardWith('VIEWER', ended).canActivate(contextFor(declared('admin'), 'Bearer t')),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('never reaches the signing surface — a signer is not the customer', async () => {
+    // The relay path returns before any workspace is looked up; a lapsed
+    // sender's already-sent links keep working. (Without the relay secret the
+    // answer is the usual uniform 404, never a 402.)
+    const ctx = publicContext(declared('sign-relay'), {}, '203.0.113.12');
+    await expect(guardWith('OWNER', ended).canActivate(ctx)).rejects.toThrow(NotFoundException);
   });
 });
 

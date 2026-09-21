@@ -1,11 +1,16 @@
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@clerk/nextjs/server';
+import { GetPro } from '@/components/billing/get-pro';
 import { TopNav } from '@/components/shell/top-nav';
 import type { GetStartedStep } from '@/components/shell/get-started';
 import { loadMe, loadRequests, loadTemplates } from '@/lib/queries';
 
-/** Free trial length, in days, from workspace creation. */
-const TRIAL_DAYS = 14;
+/**
+ * Pages that stay reachable once a trial has ended: the way to pay, the way to
+ * ask for help, and the person's own account. Every other page shows Get Pro.
+ */
+const OPEN_WHEN_LOCKED = ['/billing', '/help', '/account'];
 
 /**
  * The signed-in product shell. Everything under (app) gets the same chrome:
@@ -16,13 +21,30 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const me = await loadMe();
   if (me.status === 'onboarding') redirect('/welcome');
 
+  const tenant = me.status === 'ok' ? me.data.tenant : null;
+  const access = tenant?.access ?? null;
+
+  // Trial over: every page in the product becomes the Get Pro page, whatever
+  // URL was asked for — except the few a locked customer still needs. The API
+  // already refuses the work itself (402 TRIAL_ENDED); this is only so the
+  // screen says WHY, instead of showing a dashboard full of failed loads.
+  if (access?.state === 'ended') {
+    const path = (await headers()).get('x-pathname') ?? '';
+    const open = OPEN_WHEN_LOCKED.some((p) => path === p || path.startsWith(`${p}/`));
+    return (
+      <div className="flex min-h-screen flex-col">
+        <TopNav trialDaysLeft={null} steps={[]} locked />
+        <main className="min-h-0 flex-1">{open ? children : <GetPro />}</main>
+      </div>
+    );
+  }
+
   const [templates, requests, user] = await Promise.all([
     loadTemplates(),
     loadRequests(),
     currentUser(),
   ]);
 
-  const tenant = me.status === 'ok' ? me.data.tenant : null;
   const steps: GetStartedStep[] = [
     {
       key: 'workspace',
@@ -61,16 +83,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     },
   ];
 
-  const daysLeft = tenant
-    ? Math.max(
-        0,
-        TRIAL_DAYS - Math.floor((Date.now() - new Date(tenant.createdAt).getTime()) / 86_400_000),
-      )
-    : null;
-
   return (
     <div className="flex min-h-screen flex-col">
-      <TopNav trialDaysLeft={daysLeft} steps={steps} />
+      <TopNav
+        trialDaysLeft={access?.state === 'trial' ? access.daysLeft : null}
+        steps={steps}
+        pro={access?.state === 'pro'}
+      />
       <main className="min-h-0 flex-1">{children}</main>
     </div>
   );

@@ -29,9 +29,15 @@ const SECTIONS = [
 export function TopNav({
   trialDaysLeft,
   steps,
+  locked = false,
+  pro = false,
 }: {
   trialDaysLeft: number | null;
   steps: GetStartedStep[];
+  /** Trial over: every section leads to the Get Pro page, so none is offered. */
+  locked?: boolean;
+  /** A paid workspace is not asked to "Get Pro". */
+  pro?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -43,25 +49,26 @@ export function TopNav({
         </Link>
 
         <nav className="flex h-full min-w-0 flex-1 items-stretch gap-1">
-          {SECTIONS.map((s) => {
-            // /agreements/anything still lights up Documents.
-            const active = pathname === s.href || pathname.startsWith(`${s.href}/`);
-            return (
-              <Link
-                key={s.href}
-                href={s.href}
-                aria-current={active ? 'page' : undefined}
-                className={`relative flex items-center px-4 text-[15px] font-medium transition-colors ${
-                  active ? 'text-ink' : 'text-ink-muted hover:text-ink'
-                }`}
-              >
-                {s.label}
-                {active && (
-                  <span className="absolute inset-x-2 bottom-0 h-1 rounded-t-full bg-brand" />
-                )}
-              </Link>
-            );
-          })}
+          {!locked &&
+            SECTIONS.map((s) => {
+              // /agreements/anything still lights up Documents.
+              const active = pathname === s.href || pathname.startsWith(`${s.href}/`);
+              return (
+                <Link
+                  key={s.href}
+                  href={s.href}
+                  aria-current={active ? 'page' : undefined}
+                  className={`relative flex items-center px-4 text-[15px] font-medium transition-colors ${
+                    active ? 'text-ink' : 'text-ink-muted hover:text-ink'
+                  }`}
+                >
+                  {s.label}
+                  {active && (
+                    <span className="absolute inset-x-2 bottom-0 h-1 rounded-t-full bg-brand" />
+                  )}
+                </Link>
+              );
+            })}
         </nav>
 
         <div className="flex shrink-0 items-center gap-3">
@@ -70,13 +77,15 @@ export function TopNav({
               {trialDaysLeft} {trialDaysLeft === 1 ? 'Day' : 'Days'} Left
             </span>
           )}
-          <Link href="/billing">
-            <Button variant="dark" size="md" className="rounded-full px-5">
-              Get Pro
-            </Button>
-          </Link>
+          {!pro && (
+            <Link href="/billing">
+              <Button variant="dark" size="md" className="rounded-full px-5">
+                Get Pro
+              </Button>
+            </Link>
+          )}
 
-          <SetupPill steps={steps} />
+          {!locked && <SetupPill steps={steps} />}
 
           <a
             href="/help"

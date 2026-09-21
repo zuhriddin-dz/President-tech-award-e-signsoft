@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
+import type { TenantPlan } from '@docflow/contracts';
 import type { MembershipRole } from '@docflow/db';
 import type { VerifiedIdentity } from '../auth/claims.js';
 
@@ -16,6 +17,15 @@ export interface RequestAuth {
   clerkUserId: string;
   tenantId: string; // our tenants.id
   role: MembershipRole;
+  /**
+   * What this workspace is entitled to, read with the membership on the
+   * session path — the trial gate in PolicyGuard is the only consumer.
+   *
+   * Absent on the SIGNER path, deliberately: a signer is not our customer, and
+   * an unpaid sender must never be able to strand a document someone else is
+   * half-way through signing.
+   */
+  entitlement?: { plan: TenantPlan; trialEndsAt: Date };
 }
 
 const AUTH_KEY = 'docflow:auth';

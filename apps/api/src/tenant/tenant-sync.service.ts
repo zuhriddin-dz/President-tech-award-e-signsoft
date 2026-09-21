@@ -86,15 +86,23 @@ export class TenantSyncService {
 
     // Membership mirror runs inside the tenant's own RLS context.
     this.context.enter(auth);
-    await this.prisma.$transaction(async (tx) => {
+    const entitlement = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.tenant_id', ${tenantUuid}, true)`;
       await tx.membership.upsert({
         where: { tenantId_userId: { tenantId: tenantUuid, userId } },
         create: { tenantId: tenantUuid, userId, role },
         update: { role },
       });
+      // Read in the SAME transaction, so it is the same RLS context that just
+      // stamped the membership: findFirst, because under that context the only
+      // visible tenant IS ours. One cheap row, on a query this path already
+      // pays for — the trial gate must not cost an extra round trip per call.
+      return tx.tenant.findFirst({ select: { plan: true, trialEndsAt: true } });
     });
-    return auth;
+
+    const withEntitlement: RequestAuth = { ...auth, ...(entitlement ? { entitlement } : {}) };
+    this.context.enter(withEntitlement);
+    return withEntitlement;
   }
 }
 

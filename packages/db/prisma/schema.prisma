@@ -32,6 +32,15 @@ enum TenantKind {
   @@map("tenant_kind")
 }
 
+// What a workspace is entitled to. `pro` is granted by hand today — there is no
+// payment processor, so nothing in the product can set it (scripts/set-plan.mjs).
+enum TenantPlan {
+  trial
+  pro
+
+  @@map("tenant_plan")
+}
+
 model Tenant {
   id          String       @id @default(uuid()) @db.Uuid
   name        String
@@ -41,6 +50,12 @@ model Tenant {
   clerkOrgId     String?   @unique @map("clerk_org_id")
   personalUserId String?   @unique @map("personal_user_id")
   createdAt   DateTime     @default(now()) @map("created_at")
+  plan        TenantPlan   @default(trial)
+  // When the free trial stops. Stamped by the DATABASE, exactly like tenant_id:
+  // workspaces are inserted by the SECURITY DEFINER bootstrap functions
+  // (ensure_tenant / ensure_personal_tenant), so a default written in
+  // application code would never run for the rows that matter.
+  trialEndsAt DateTime     @default(dbgenerated("(now() + interval '7 days')")) @map("trial_ends_at")
   memberships Membership[]
 
   @@map("tenants")

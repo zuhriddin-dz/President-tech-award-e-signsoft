@@ -1,5 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
-import { Policy } from '../../common/policy.js';
+import type { MeResponse } from '@docflow/contracts';
+import { AllowWhenLocked, Policy } from '../../common/policy.js';
+import { tenantAccess } from '../../common/trial.js';
 import { TenantContext } from '../../tenant/tenant-context.js';
 import { TenantDb } from '../../tenant/tenant-db.js';
 
@@ -15,26 +17,46 @@ export class MeController {
     private readonly db: TenantDb,
   ) {}
 
+  /**
+   * Stays open on a locked workspace, because this is the call the shell makes
+   * to FIND OUT it is locked. Refusing it would leave the product with nothing
+   * to render but an error.
+   */
   @Get()
   @Policy('viewer')
-  async me(): Promise<{
-    userId: string;
-    role: string;
-    tenant: { id: string; name: string; kind: string; createdAt: string } | null;
-  }> {
+  @AllowWhenLocked()
+  async me(): Promise<MeResponse> {
     const auth = this.context.requireAuth();
     // findMany, not findUnique-by-id: under RLS the only visible tenant IS
     // ours — the query itself is the isolation proof.
     const tenants = await this.db.tx((tx) =>
-      tx.tenant.findMany({ select: { id: true, name: true, kind: true, createdAt: true } }),
+      tx.tenant.findMany({
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          createdAt: true,
+          plan: true,
+          trialEndsAt: true,
+        },
+      }),
     );
     const tenant = tenants[0];
     return {
       userId: auth.userId,
       role: auth.role,
-      // createdAt drives the trial countdown in the shell — the age of the
-      // workspace is the only honest source for "N days left".
-      tenant: tenant ? { ...tenant, createdAt: tenant.createdAt.toISOString() } : null,
+      tenant: tenant
+        ? {
+            id: tenant.id,
+            name: tenant.name,
+            kind: tenant.kind,
+            createdAt: tenant.createdAt.toISOString(),
+            plan: tenant.plan,
+            // Decided HERE, by the same function the guard locks on, so the
+            // screen and the gate can never tell the customer different things.
+            access: tenantAccess(tenant.plan, tenant.trialEndsAt, new Date()),
+          }
+        : null,
     };
   }
 

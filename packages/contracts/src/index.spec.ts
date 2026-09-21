@@ -15,6 +15,8 @@ describe('@docflow/contracts', () => {
         name: 'Acme',
         kind: 'company',
         createdAt: '2026-08-01T09:00:00.000Z',
+        plan: 'trial',
+        access: { state: 'trial', daysLeft: 3, trialEndsAt: '2026-08-08T09:00:00.000Z' },
       },
     };
     expect(MeResponseSchema.parse(good)).toEqual(good);

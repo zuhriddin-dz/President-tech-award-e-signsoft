@@ -6,6 +6,7 @@
 import { ClsServiceManager } from 'nestjs-cls';
 import { afterAll, describe, expect, it } from 'vitest';
 import { env } from '../config/env.js';
+import { tenantAccess } from '../common/trial.js';
 import { databaseUp } from '../test-support/live.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TenantContext } from './tenant-context.js';
@@ -128,6 +129,45 @@ describe.skipIf(!live)('tenant sync + RLS end to end (Neon)', () => {
 
       await db.tx((tx) => tx.tenant.deleteMany({ where: { personalUserId: personalUser } }));
       await prisma.user.deleteMany({ where: { clerkUserId: personalUser } });
+    });
+  });
+
+  it('loads the trial with the membership, and a lapsed or paid workspace reads as such next request', async () => {
+    const trialOrg = `org_trial_${suffix}`;
+    const identity = {
+      clerkUserId: `user_trial_${suffix}`,
+      email: `trial-${suffix}@itest.docflow.invalid`,
+      clerkOrgId: trialOrg,
+      orgName: 'Trial Org',
+      role: 'OWNER' as const,
+    };
+    const stateOf = (auth: Awaited<ReturnType<typeof sync.establish>>) =>
+      tenantAccess(auth.entitlement!.plan, auth.entitlement!.trialEndsAt, new Date()).state;
+
+    await cls.run(async () => {
+      // A brand-new workspace, created by the SECURITY DEFINER bootstrap: the
+      // 7 days come from the DATABASE default, and survive the round trip into
+      // a JS Date without a timezone shift.
+      const auth = await sync.establish(identity);
+      expect(auth.entitlement?.plan).toBe('trial');
+      const days = (auth.entitlement!.trialEndsAt.getTime() - Date.now()) / 86_400_000;
+      expect(days).toBeGreaterThan(6.99);
+      expect(days).toBeLessThan(7.01);
+      expect(stateOf(auth)).toBe('trial');
+
+      // Past its deadline, the very next request sees it — the row is read
+      // fresh every time, so a trial ends with no job to fire.
+      await db.tx((tx) =>
+        tx.tenant.updateMany({ data: { trialEndsAt: new Date(Date.now() - 60_000) } }),
+      );
+      expect(stateOf(await sync.establish(identity))).toBe('ended');
+
+      // And a workspace switched to pro is unlocked just as immediately.
+      await db.tx((tx) => tx.tenant.updateMany({ data: { plan: 'pro' } }));
+      expect(stateOf(await sync.establish(identity))).toBe('pro');
+
+      await db.tx((tx) => tx.tenant.deleteMany({ where: { clerkOrgId: trialOrg } }));
+      await prisma.user.deleteMany({ where: { clerkUserId: identity.clerkUserId } });
     });
   });
 });

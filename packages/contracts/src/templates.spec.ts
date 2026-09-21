@@ -16,12 +16,38 @@ describe('MeResponseSchema', () => {
         name: 'Acme',
         kind: 'company',
         createdAt: '2026-08-01T09:00:00.000Z',
+        plan: 'trial',
+        access: { state: 'trial', daysLeft: 3, trialEndsAt: '2026-08-08T09:00:00.000Z' },
       },
     };
     expect(MeResponseSchema.parse(good).tenant?.kind).toBe('company');
     expect(() =>
       MeResponseSchema.parse({ ...good, tenant: { ...good.tenant, kind: 'enterprise' } }),
     ).toThrow();
+  });
+
+  // The shell decides what to render from `access`, so a response without it —
+  // an older API, say — must fail loudly here rather than render a dashboard
+  // that should have been locked.
+  it('requires the plan and the access the shell locks on, with a known state', () => {
+    const tenant = {
+      id: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f',
+      name: 'Acme',
+      kind: 'company',
+      createdAt: '2026-08-01T09:00:00.000Z',
+      plan: 'trial',
+      access: { state: 'ended', daysLeft: 0, trialEndsAt: '2026-08-08T09:00:00.000Z' },
+    };
+    const me = { userId: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f', role: 'OWNER', tenant };
+    expect(MeResponseSchema.parse(me).tenant?.access.state).toBe('ended');
+
+    const withoutAccess: Record<string, unknown> = { ...tenant };
+    delete withoutAccess.access;
+    expect(() => MeResponseSchema.parse({ ...me, tenant: withoutAccess })).toThrow();
+    expect(() =>
+      MeResponseSchema.parse({ ...me, tenant: { ...tenant, access: { ...tenant.access, state: 'grace' } } }),
+    ).toThrow();
+    expect(() => MeResponseSchema.parse({ ...me, tenant: { ...tenant, plan: 'enterprise' } })).toThrow();
   });
 });
 

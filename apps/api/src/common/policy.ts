@@ -16,6 +16,7 @@ import { ClerkService } from '../auth/clerk.service.js';
 import { env } from '../config/env.js';
 import { QueueService } from '../queue/queue.service.js';
 import { SharedSlidingWindow, SlidingWindowRateLimiter } from './rate-limit.js';
+import { isLocked, tenantAccess } from './trial.js';
 import { TenantContext } from '../tenant/tenant-context.js';
 import { TenantSyncService } from '../tenant/tenant-sync.service.js';
 
@@ -141,6 +142,20 @@ const MIN_ROLE = {
 
 export const Policy = (name: PolicyName) => SetMetadata(POLICY_KEY, name);
 
+export const ALLOW_WHEN_LOCKED_KEY = 'docflow:allow-when-locked';
+
+/**
+ * Marks a route that keeps working after a workspace's free trial has ended.
+ *
+ * Default-deny, exactly like @Policy: an unmarked route is refused for a locked
+ * workspace, so a new endpoint cannot quietly stay open. Only two kinds of
+ * route belong here — reading the workspace's own state, so the shell can draw
+ * the Get Pro screen at all, and fetching documents it has ALREADY signed.
+ * Those are the customer's evidence of agreements they have made; withholding
+ * them to collect payment is not a lever this product pulls.
+ */
+export const AllowWhenLocked = () => SetMetadata(ALLOW_WHEN_LOCKED_KEY, true);
+
 @Injectable()
 export class PolicyGuard implements CanActivate {
   /**
@@ -253,6 +268,31 @@ export class PolicyGuard implements CanActivate {
 
     const auth = await this.sync.establish(identity); // enters tenant context (or OnboardingRequired)
     if (!roleSatisfies(auth.role, required)) throw new ForbiddenException();
+
+    // The trial gate: after the role check, before any handler runs. ONE place,
+    // so a tenant route written next month is covered the day it is written
+    // rather than the day someone remembers. A locked workspace keeps only what
+    // @AllowWhenLocked marks — reading itself, and downloading what it has
+    // already signed. 402 with a code the shell branches on, not 403: this is
+    // "pay to continue", not "you may never".
+    if (auth.entitlement) {
+      const access = tenantAccess(auth.entitlement.plan, auth.entitlement.trialEndsAt, new Date());
+      const allowed = this.reflector.getAllAndOverride<boolean | undefined>(ALLOW_WHEN_LOCKED_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (isLocked(access) && !allowed) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.PAYMENT_REQUIRED,
+            error: 'PaymentRequired',
+            message: 'Your free trial has ended.',
+            code: 'TRIAL_ENDED',
+          },
+          HttpStatus.PAYMENT_REQUIRED,
+        );
+      }
+    }
     return true;
   }
 }

@@ -43,6 +43,11 @@ export default clerkMiddleware(async (auth, req) => {
   if (!isPublicRoute(req)) await auth.protect();
 
   const requestHeaders = new Headers(req.headers);
+  // The (app) layout cannot see which URL it is rendering, and needs it for
+  // one decision: which pages stay reachable once a trial has ended. `set`,
+  // not `append`, so a client-sent x-pathname never survives. Display routing
+  // only — the API enforces the trial on its own.
+  requestHeaders.set('x-pathname', req.nextUrl.pathname);
   let csp: string | null = null;
 
   if (MODE !== 'off') {

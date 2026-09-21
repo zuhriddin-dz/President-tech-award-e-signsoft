@@ -27,6 +27,11 @@ export async function apiGet<S extends z.ZodType>(
     console.error(`[api] ${path} unreachable at ${API_ORIGIN}:`, cause);
     return null;
   }
+  // 402 is a state, not a fault: the workspace's trial has ended and the shell
+  // is already showing the Get Pro page. Next renders a page alongside its
+  // layout, so the page's own loads still run and are refused — logging each
+  // as an error would bury real failures.
+  if (res.status === 402) return null;
   if (!res.ok) {
     // Server-side log only — the page shows a friendly state, never the status.
     console.error(`[api] ${path} -> ${res.status}`);
