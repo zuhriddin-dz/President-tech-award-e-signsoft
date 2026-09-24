@@ -17,7 +17,7 @@ describe('MeResponseSchema', () => {
         kind: 'company',
         createdAt: '2026-08-01T09:00:00.000Z',
         plan: 'trial',
-        access: { state: 'trial', daysLeft: 3, trialEndsAt: '2026-08-08T09:00:00.000Z' },
+        access: { state: 'trial', daysLeft: 3, trialEndsAt: '2026-08-08T09:00:00.000Z', paidUntil: null },
       },
     };
     expect(MeResponseSchema.parse(good).tenant?.kind).toBe('company');
@@ -36,7 +36,7 @@ describe('MeResponseSchema', () => {
       kind: 'company',
       createdAt: '2026-08-01T09:00:00.000Z',
       plan: 'trial',
-      access: { state: 'ended', daysLeft: 0, trialEndsAt: '2026-08-08T09:00:00.000Z' },
+      access: { state: 'ended', daysLeft: 0, trialEndsAt: '2026-08-08T09:00:00.000Z', paidUntil: null },
     };
     const me = { userId: '3f2f1a10-9c3b-4b2e-9d3e-2a1b3c4d5e6f', role: 'OWNER', tenant };
     expect(MeResponseSchema.parse(me).tenant?.access.state).toBe('ended');

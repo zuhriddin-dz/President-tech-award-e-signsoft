@@ -142,7 +142,12 @@ describe.skipIf(!live)('tenant sync + RLS end to end (Neon)', () => {
       role: 'OWNER' as const,
     };
     const stateOf = (auth: Awaited<ReturnType<typeof sync.establish>>) =>
-      tenantAccess(auth.entitlement!.plan, auth.entitlement!.trialEndsAt, new Date()).state;
+      tenantAccess(
+        auth.entitlement!.plan,
+        auth.entitlement!.trialEndsAt,
+        auth.entitlement!.paidUntil,
+        new Date(),
+      ).state;
 
     await cls.run(async () => {
       // A brand-new workspace, created by the SECURITY DEFINER bootstrap: the

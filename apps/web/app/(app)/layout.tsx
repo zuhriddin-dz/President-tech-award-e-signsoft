@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@clerk/nextjs/server';
+import { accessLocked } from '@docflow/contracts';
 import { GetPro } from '@/components/billing/get-pro';
 import { TopNav } from '@/components/shell/top-nav';
 import type { GetStartedStep } from '@/components/shell/get-started';
@@ -24,11 +25,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const tenant = me.status === 'ok' ? me.data.tenant : null;
   const access = tenant?.access ?? null;
 
-  // Trial over: every page in the product becomes the Get Pro page, whatever
-  // URL was asked for — except the few a locked customer still needs. The API
-  // already refuses the work itself (402 TRIAL_ENDED); this is only so the
-  // screen says WHY, instead of showing a dashboard full of failed loads.
-  if (access?.state === 'ended') {
+  // Time over — the free trial ran out, or a paid month did — so every page in
+  // the product becomes the Get Pro page, whatever URL was asked for, except
+  // the few a locked customer still needs. The API already refuses the work
+  // itself (402 TRIAL_ENDED); this is only so the screen says WHY, instead of
+  // showing a dashboard full of failed loads.
+  if (access && accessLocked(access)) {
     const path = (await headers()).get('x-pathname') ?? '';
     const open = OPEN_WHEN_LOCKED.some((p) => path === p || path.startsWith(`${p}/`));
     return (

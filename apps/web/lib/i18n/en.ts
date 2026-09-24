@@ -193,15 +193,15 @@ export const en = {
     lede: 'Start with a 7-day free trial. Whatever you choose afterwards, documents you have already signed stay yours to download.',
     personal: [
       'Personal',
-      '$10',
+      "99 000 so'm",
       'per month',
       'One person, everything that makes a signature hold up.',
     ] as [string, string, string, string],
     company: [
       'Company',
-      '$10 + $30',
-      'per month, per user',
-      'A shared workspace with roles and a real audit trail.',
+      "299 000 so'm",
+      'per month',
+      'A shared workspace with roles and a real audit trail. One price, any number of people.',
     ] as [string, string, string, string],
     scale: [
       'Scale',
@@ -210,7 +210,7 @@ export const en = {
       'For teams that need it wired into something else.',
     ] as [string, string, string, string],
     cta: 'Start free trial',
-    note: 'Billing is not open yet — the trial runs, and we will ask you here before anything is charged.',
+    note: 'Pay with Payme or Click. Renewal is manual, so nothing is ever taken automatically.',
   },
 
   finalCta: {

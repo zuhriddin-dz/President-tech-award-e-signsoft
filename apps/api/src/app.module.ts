@@ -19,6 +19,13 @@ import { SignatureRequestsService } from './modules/signature-requests/signature
 import { SigningController } from './modules/signing/signing.controller.js';
 import { SigningService } from './modules/signing/signing.service.js';
 import { SigningTokenResolver } from './tenant/signing-token.resolver.js';
+import { PaymentResolver } from './tenant/payment.resolver.js';
+import { BillingController } from './modules/billing/billing.controller.js';
+import { BillingService } from './modules/billing/billing.service.js';
+import { PaymeController } from './modules/billing/payme.controller.js';
+import { PaymeService } from './modules/billing/payme.service.js';
+import { ClickController } from './modules/billing/click.controller.js';
+import { ClickService } from './modules/billing/click.service.js';
 import { MeController } from './modules/me/me.controller.js';
 import { OnboardingController } from './modules/onboarding/onboarding.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -63,6 +70,11 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     FoldersController,
     SigningController,
     VerifyController,
+    BillingController,
+    // The two provider callbacks. Open to the internet by necessity, each
+    // authenticated by its own provider's scheme rather than by a session.
+    PaymeController,
+    ClickController,
   ],
   providers: [
     ClerkService,
@@ -76,6 +88,10 @@ import { TenantSyncService } from './tenant/tenant-sync.service.js';
     SignatureRequestsService,
     SigningService,
     SigningTokenResolver,
+    PaymentResolver,
+    BillingService,
+    PaymeService,
+    ClickService,
     QueueService,
     SealProvider,
     VerifyService,

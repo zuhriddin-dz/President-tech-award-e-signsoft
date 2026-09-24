@@ -17,8 +17,12 @@ export const TenantKindSchema = z.enum(['personal', 'company']);
 export type TenantKind = z.infer<typeof TenantKindSchema>;
 
 /**
- * What a workspace is entitled to. `pro` is granted BY HAND today — there is no
- * checkout, so nothing a user can click sets it (packages/db/scripts/set-plan.mjs).
+ * What a workspace is entitled to. Set by a completed payment, or by hand for
+ * a workspace we grant (packages/db/scripts/set-plan.mjs).
+ *
+ * `pro` alone does NOT mean "currently paid" — it is read together with
+ * `paidUntil`, which is when the paid period runs out. A hand-granted
+ * workspace has `pro` and no `paidUntil`, and so never runs out.
  */
 export const TenantPlanSchema = z.enum(['trial', 'pro']);
 export type TenantPlan = z.infer<typeof TenantPlanSchema>;
@@ -28,21 +32,46 @@ export const TRIAL_DAYS = 7;
 
 /**
  * Where a workspace stands, decided by the SERVER and read by the shell:
- *   'trial' — inside the free window; `daysLeft` counts down.
- *   'ended' — the window closed. The product is locked to the Get Pro page, and
- *             the API refuses everything except reading the workspace and
- *             downloading what is already signed.
- *   'pro'   — paid.
+ *   'trial'  — inside the free window; `daysLeft` counts down.
+ *   'ended'  — the free window closed and nothing was ever paid.
+ *   'pro'    — paid, and the paid period still has time left.
+ *   'lapsed' — paid once, and that period has run out.
+ *
+ * 'lapsed' is separate from 'ended' because renewal is MANUAL: a paying
+ * customer reaching the end of a month and not having paid the next one is the
+ * ordinary case, not an edge case, and telling them "your free trial has
+ * ended" months after they first paid us is simply false. Both states lock the
+ * product; only the sentence differs.
+ *
  * The browser is told this so it can show the right screen; it is never what
  * enforces it — the API decides again on every request.
  */
 export const TenantAccessSchema = z.object({
-  state: z.enum(['trial', 'ended', 'pro']),
-  /** Whole days left in the trial: 0 once it has ended, and on a pro workspace. */
+  state: z.enum(['trial', 'ended', 'pro', 'lapsed']),
+  /**
+   * Whole days of access left — of the free window in 'trial', of the paid
+   * period in 'pro'. 0 in both locked states, and 0 on a hand-granted
+   * workspace, which has no end to count towards.
+   */
   daysLeft: z.number().int().nonnegative(),
   trialEndsAt: z.iso.datetime(),
+  /** End of the paid period; null on a workspace that has never paid. */
+  paidUntil: z.iso.datetime().nullable(),
 });
 export type TenantAccess = z.infer<typeof TenantAccessSchema>;
+
+/**
+ * Is the product closed to this workspace?
+ *
+ * Lives in the contract rather than on either side, because BOTH sides ask it
+ * — the API to refuse the request, the shell to draw the Get Pro page instead
+ * of the one asked for — and they have to agree. Adding 'lapsed' found three
+ * separate `state === 'ended'` checks that each had to be remembered; there is
+ * now one, and the next state is a change to this function alone.
+ */
+export function accessLocked(access: TenantAccess): boolean {
+  return access.state === 'ended' || access.state === 'lapsed';
+}
 
 export const MeResponseSchema = z.object({
   userId: z.uuid(),
@@ -86,7 +115,121 @@ export const API_PATHS = {
   onboardingPersonal: '/onboarding/personal',
   /** Public, unauthenticated: verify a document you hold by its fingerprint. */
   verify: '/verify',
+  /** Plans, checkout and payment history for the signed-in workspace. */
+  billing: '/billing',
+  /**
+   * Provider callbacks. NOT under /billing, and deliberately so: these carry no
+   * session, are reachable by anyone, and each provider authenticates itself in
+   * its own way (Payme by Basic credentials, Click by a signature over the
+   * fields). Keeping them on their own prefix means no future /billing route
+   * can inherit that openness by accident.
+   */
+  paymeCallback: '/payments/payme',
+  clickCallback: '/payments/click',
 } as const;
+
+// ── Billing ─────────────────────────────────────────────────────────────────
+
+/**
+ * What a workspace can BUY, as opposed to TenantPlan, which is what it HAS.
+ * You buy a `personal` or a `company` subscription; either one grants `pro`.
+ * Keeping the two apart means adding a third paid tier is a new value here
+ * rather than a migration of the entitlement column every route reads.
+ */
+export const BillingPlanSchema = z.enum(['personal', 'company']);
+export type BillingPlan = z.infer<typeof BillingPlanSchema>;
+
+/**
+ * The price list, in TIYIN — 1 so'm = 100 tiyin.
+ *
+ * Integer minor units, never so'm as a float. Money in binary floating point
+ * accumulates fractions that cannot be represented, and a single tiyin of
+ * drift is not a rounding cosmetic here: both providers compare the amount
+ * they were told against the amount we confirm, and reject the payment
+ * outright when they differ.
+ *
+ * Payme quotes in tiyin and Click quotes in so'm, so exactly one adapter
+ * converts (see sumFromTiyin). This table stays the only place a price lives —
+ * change a number here and the checkout, the callbacks, the Get Pro page and
+ * the landing page all follow.
+ *
+ * Flat per workspace: the member count does not enter the bill.
+ */
+export const PLAN_PRICE_TIYIN = {
+  personal: 9_900_000, //  99 000 so'm per month
+  company: 29_900_000, // 299 000 so'm per month
+} as const satisfies Record<BillingPlan, number>;
+
+/**
+ * The longest single purchase. A year is as far ahead as anyone sensibly
+ * pre-pays, and the cap matters: `months` arrives from the browser and decides
+ * both the amount charged and how much access is granted.
+ */
+export const MAX_BILLING_MONTHS = 12;
+
+/** 1 so'm = 100 tiyin. Named so the conversions below cannot be read as magic. */
+export const TIYIN_PER_SUM = 100;
+
+/**
+ * Tiyin → so'm, for Click (which quotes whole so'm) and for display.
+ * Every price in PLAN_PRICE_TIYIN is a whole number of so'm, so this divides
+ * exactly; it throws rather than rounding if that ever stops being true,
+ * because silently charging a different amount is the failure to avoid.
+ */
+export function sumFromTiyin(tiyin: number): number {
+  if (!Number.isInteger(tiyin) || tiyin % TIYIN_PER_SUM !== 0) {
+    throw new Error(`Amount ${tiyin} tiyin is not a whole number of so'm`);
+  }
+  return tiyin / TIYIN_PER_SUM;
+}
+
+export const PaymentProviderSchema = z.enum(['payme', 'click']);
+export type PaymentProvider = z.infer<typeof PaymentProviderSchema>;
+
+/**
+ * A payment's life: created when we hand the customer to a provider, and then
+ * exactly one of paid or cancelled. There is no 'failed' — a provider that
+ * never comes back leaves the row `pending` for ever, which is the truth.
+ */
+export const PaymentStatusSchema = z.enum(['pending', 'paid', 'cancelled']);
+export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
+
+/** Start a purchase: what, through whom, for how long. */
+export const CheckoutRequestSchema = z.object({
+  plan: BillingPlanSchema,
+  provider: PaymentProviderSchema,
+  months: z.number().int().min(1).max(MAX_BILLING_MONTHS).default(1),
+});
+export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;
+
+/**
+ * Where to send the browser. The amount comes back too so the page can state
+ * what is about to be charged in the same number the provider will show.
+ */
+export const CheckoutResponseSchema = z.object({
+  paymentId: z.uuid(),
+  payUrl: z.url(),
+  amountTiyin: z.number().int().positive(),
+});
+export type CheckoutResponse = z.infer<typeof CheckoutResponseSchema>;
+
+/** One line of the workspace's payment history. */
+export const PaymentSchema = z.object({
+  id: z.uuid(),
+  plan: BillingPlanSchema,
+  provider: PaymentProviderSchema,
+  status: PaymentStatusSchema,
+  amountTiyin: z.number().int().nonnegative(),
+  months: z.number().int().positive(),
+  createdAt: z.iso.datetime(),
+  paidAt: z.iso.datetime().nullable(),
+  /** What this payment bought, once it was paid. */
+  periodEnd: z.iso.datetime().nullable(),
+});
+export type Payment = z.infer<typeof PaymentSchema>;
+
+export const PaymentListSchema = z.object({ payments: z.array(PaymentSchema) });
+export type PaymentList = z.infer<typeof PaymentListSchema>;
 
 // ── Folders ─────────────────────────────────────────────────────────────────
 

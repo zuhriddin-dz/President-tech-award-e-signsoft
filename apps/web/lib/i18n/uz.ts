@@ -180,15 +180,15 @@ export const uz: typeof en = {
     lede: '7 kunlik bepul sinovdan boshlang. Keyin nimani tanlasangiz ham, allaqachon imzolangan hujjatlaringiz sizniki boʻlib qoladi.',
     personal: [
       'Shaxsiy',
-      '$10',
+      '99 000 soʻm',
       'oyiga',
       'Bir kishi uchun — imzoni ishonchli qiladigan hamma narsa.',
     ],
     company: [
       'Kompaniya',
-      '$10 + $30',
-      'oyiga, har bir foydalanuvchi uchun',
-      'Rollar va haqiqiy audit izi bilan umumiy ish maydoni.',
+      '299 000 soʻm',
+      'oyiga',
+      'Rollar va haqiqiy audit izi bilan umumiy ish maydoni. Bitta narx, istalgan sonli xodim.',
     ],
     scale: [
       'Scale',
@@ -197,7 +197,7 @@ export const uz: typeof en = {
       'Buni boshqa tizimga ulashi kerak boʻlgan jamoalar uchun.',
     ],
     cta: 'Bepul sinovni boshlash',
-    note: 'Toʻlov tizimi hali ulanmagan — sinov ishlayapti va biror toʻlov olinishidan oldin sizdan shu yerda soʻraymiz.',
+    note: 'Payme yoki Click orqali toʻlang. Yangilash qoʻlda — pul hech qachon avtomatik yechilmaydi.',
   },
 
   finalCta: {

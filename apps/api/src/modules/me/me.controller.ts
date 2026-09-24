@@ -38,6 +38,7 @@ export class MeController {
           createdAt: true,
           plan: true,
           trialEndsAt: true,
+          paidUntil: true,
         },
       }),
     );
@@ -54,7 +55,7 @@ export class MeController {
             plan: tenant.plan,
             // Decided HERE, by the same function the guard locks on, so the
             // screen and the gate can never tell the customer different things.
-            access: tenantAccess(tenant.plan, tenant.trialEndsAt, new Date()),
+            access: tenantAccess(tenant.plan, tenant.trialEndsAt, tenant.paidUntil, new Date()),
           }
         : null,
     };

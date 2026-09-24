@@ -97,7 +97,7 @@ export class TenantSyncService {
       // stamped the membership: findFirst, because under that context the only
       // visible tenant IS ours. One cheap row, on a query this path already
       // pays for — the trial gate must not cost an extra round trip per call.
-      return tx.tenant.findFirst({ select: { plan: true, trialEndsAt: true } });
+      return tx.tenant.findFirst({ select: { plan: true, trialEndsAt: true, paidUntil: true } });
     });
 
     const withEntitlement: RequestAuth = { ...auth, ...(entitlement ? { entitlement } : {}) };

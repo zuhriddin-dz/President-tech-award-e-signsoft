@@ -9,5 +9,5 @@
  * for the API lives in apps/api/src/tenant/ (Phase 3), nowhere else.
  */
 export { PrismaClient, MembershipRole } from '@prisma/client';
-export type { Prisma, Tenant, User, Membership } from '@prisma/client';
+export type { Prisma, Tenant, User, Membership, Payment } from '@prisma/client';
 export const PACKAGE_NAME = '@docflow/db' as const;

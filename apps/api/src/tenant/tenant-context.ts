@@ -25,7 +25,7 @@ export interface RequestAuth {
    * an unpaid sender must never be able to strand a document someone else is
    * half-way through signing.
    */
-  entitlement?: { plan: TenantPlan; trialEndsAt: Date };
+  entitlement?: { plan: TenantPlan; trialEndsAt: Date; paidUntil: Date | null };
 }
 
 const AUTH_KEY = 'docflow:auth';
@@ -61,6 +61,26 @@ export class TenantContext {
     this.cls.set(AUTH_KEY, {
       userId: '00000000-0000-0000-0000-000000000000',
       clerkUserId: 'signer',
+      tenantId,
+      role: 'VIEWER',
+    });
+  }
+
+  /**
+   * Enter tenant context for a PAYMENT CALLBACK — Payme or Click telling us
+   * about an order, with no session of any kind and no user behind it.
+   *
+   * The tenant comes from the payment LOOKUP (PaymentResolver), never from
+   * anything the caller said: the only thing a provider sends is the order id
+   * we gave it, and that id is resolved against the database before this is
+   * called. Sentinel user, like the signer path. Role is never consulted on
+   * these routes — they carry the 'public' policy, so the guard's role check
+   * does not run, and RLS keys on the tenant rather than on the member.
+   */
+  enterAsPaymentCallback(tenantId: string): void {
+    this.cls.set(AUTH_KEY, {
+      userId: '00000000-0000-0000-0000-000000000000',
+      clerkUserId: 'payment',
       tenantId,
       role: 'VIEWER',
     });

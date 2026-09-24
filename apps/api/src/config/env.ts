@@ -60,6 +60,35 @@ const envSchema = z.object({
   // OPTIONAL on purpose: unset is safe (coarser, never weaker), so an existing
   // deploy keeps booting and can adopt it whenever apps/web is updated too.
   VERIFY_RELAY_SECRET: z.string().min(32).optional(),
+
+  // ── Billing ───────────────────────────────────────────────────────────────
+  //
+  // The dashboard origin, used to send a customer back from a provider's
+  // checkout page. Optional: without it the provider shows its own "done"
+  // screen and the customer finds their way back themselves, which is worse
+  // but is not a reason to refuse to boot.
+  WEB_APP_URL: z.url().optional(),
+  //
+  // Payme (Paycom). MERCHANT_ID identifies the cashbox; KEY is the merchant
+  // key that Payme presents back to us as HTTP Basic credentials on every
+  // callback — it is the ONLY thing separating a real callback from anyone on
+  // the internet posting JSON at us, so treat it like a signing key.
+  //
+  // ACCOUNT_FIELD must equal the field name configured in the Payme cabinet:
+  // Payme sends `account: { <that name>: <our payment id> }`, and a mismatch
+  // means every payment looks like an unknown order.
+  PAYME_MERCHANT_ID: z.string().min(1).optional(),
+  PAYME_KEY: z.string().min(1).optional(),
+  PAYME_ACCOUNT_FIELD: z.string().min(1).default('order_id'),
+  PAYME_CHECKOUT_URL: z.url().default('https://checkout.paycom.uz'),
+  //
+  // Click. SECRET_KEY is not sent to us — both sides hash it into the
+  // signature over the other fields, which is what proves the callback came
+  // from Click.
+  CLICK_MERCHANT_ID: z.string().min(1).optional(),
+  CLICK_SERVICE_ID: z.string().min(1).optional(),
+  CLICK_SECRET_KEY: z.string().min(1).optional(),
+  CLICK_CHECKOUT_URL: z.url().default('https://my.click.uz/services/pay'),
 });
 
 export type Env = z.infer<typeof envSchema>;

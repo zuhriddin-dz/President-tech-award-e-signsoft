@@ -1,29 +1,36 @@
 import Link from 'next/link';
 import { Check, CircleAlert, Download, FileCheck2, Lock } from 'lucide-react';
 import {
+  accessLocked,
   API_PATHS,
+  PLAN_PRICE_TIYIN,
   TRIAL_DAYS,
+  type BillingPlan,
+  type Payment,
   type SignatureRequest,
   type TenantAccess,
 } from '@docflow/contracts';
 import { Button, Card, CardHeader } from '@/components/ui/primitives';
-import { loadMe, loadRequests } from '@/lib/queries';
+import { formatSum } from '@/lib/money';
+import { loadMe, loadPayments, loadRequests } from '@/lib/queries';
+import { CheckoutButtons } from './checkout-button';
 
 /**
  * Plans, and where this workspace stands.
  *
  * One page, two doors: /billing, reached by choice, and EVERY dashboard URL
- * once a workspace's trial has ended — the shell renders this in place of the
+ * once a workspace's time has run out — the shell renders this in place of the
  * page that was asked for. The second door is why it lists signed documents:
  * they stay the customer's after the trial, and with the rest of the product
  * closed this is the one place left to get them.
  *
- * Nothing here can be bought yet — no payment processor is connected. That is
- * stated plainly rather than dressed up with a checkout that fails at the last
- * step: a page that takes a card it cannot charge is worse than one that says
- * so up front.
+ * Payment is taken by Payme or Click on their own pages. Nothing here ever
+ * touches a card number, which is also why the buy control is two provider
+ * buttons rather than a form.
  */
 interface Plan {
+  /** Set for a plan that can be bought; absent for "talk to us". */
+  id?: BillingPlan;
   name: string;
   price: string;
   cadence: string;
@@ -34,8 +41,9 @@ interface Plan {
 
 const PLANS: readonly Plan[] = [
   {
+    id: 'personal',
     name: 'Personal',
-    price: '$10',
+    price: formatSum(PLAN_PRICE_TIYIN.personal),
     cadence: 'per month',
     blurb: 'One person, everything that makes a signature hold up.',
     features: [
@@ -47,10 +55,11 @@ const PLANS: readonly Plan[] = [
     ],
   },
   {
+    id: 'company',
     name: 'Company',
-    price: '$10 + $30',
-    cadence: 'per month, per user',
-    blurb: 'A shared workspace with a real audit trail.',
+    price: formatSum(PLAN_PRICE_TIYIN.company),
+    cadence: 'per month',
+    blurb: 'A shared workspace with a real audit trail. One price, any number of people.',
     highlight: true,
     features: [
       'Everything in Personal',
@@ -79,18 +88,16 @@ const PLANS: readonly Plan[] = [
 const DAY_FORMAT = new Intl.DateTimeFormat('en', { day: 'numeric', month: 'long', year: 'numeric' });
 
 export async function GetPro() {
-  const [me, requests] = await Promise.all([loadMe(), loadRequests()]);
+  const [me, requests, payments] = await Promise.all([loadMe(), loadRequests(), loadPayments()]);
   const tenant = me.status === 'ok' ? me.data.tenant : null;
   const access = tenant?.access ?? null;
-  const locked = access?.state === 'ended';
+  const locked = access ? accessLocked(access) : false;
   const live = requests.filter((r) => !r.deletedAt);
   const signed = live.filter((r) => r.status === 'completed');
 
   return (
     <div className="mx-auto w-full max-w-[1360px] px-6 py-6">
-      <h1 className="text-2xl font-semibold text-ink">
-        {locked ? 'Your free trial has ended' : 'Plan and billing'}
-      </h1>
+      <h1 className="text-2xl font-semibold text-ink">{headingFor(access)}</h1>
       <p className="mt-1.5 text-sm text-ink-muted">
         {tenant?.kind === 'personal' ? 'Personal' : 'Company'} workspace · {live.length} document
         {live.length === 1 ? '' : 's'} sent
@@ -125,43 +132,63 @@ export async function GetPro() {
                 </li>
               ))}
             </ul>
-            <Button variant={p.highlight ? 'dark' : 'secondary'} className="mt-6 w-full" disabled>
-              Not available yet
-            </Button>
+            {p.id ? (
+              <CheckoutButtons plan={p.id} highlight={p.highlight} />
+            ) : (
+              <Link href="/help" className="mt-6 block">
+                <Button variant="secondary" className="w-full">
+                  Get in touch
+                </Button>
+              </Link>
+            )}
           </Card>
         ))}
       </div>
 
-      <Card className="mt-6">
-        <CardHeader title="Why you cannot pay yet" />
-        <div className="px-6 pb-6 text-sm text-ink-muted">
-          <p>
-            E-SIGNSOFT has no payment processor connected yet, so there is no checkout to send you to
-            and no card on file to charge. When billing opens you will be able to upgrade here, and
-            you will be asked once, before anything is taken.
-          </p>
-          <p className="mt-3">
-            If you need to keep working in the meantime, or need an invoice,{' '}
-            <Link href="/help" className="font-semibold text-brand-link hover:underline">
-              get in touch
-            </Link>
-            .
-          </p>
-        </div>
-      </Card>
+      <PaymentHistory payments={payments} />
     </div>
   );
 }
 
+function headingFor(access: TenantAccess | null): string {
+  if (access?.state === 'ended') return 'Your free trial has ended';
+  if (access?.state === 'lapsed') return 'Your subscription has ended';
+  return 'Plan and billing';
+}
+
 /** Where the workspace stands, in one sentence — decided by the API, not here. */
 function StatusBanner({ access }: { access: TenantAccess }) {
-  const ends = DAY_FORMAT.format(new Date(access.trialEndsAt));
+  const trialEnds = DAY_FORMAT.format(new Date(access.trialEndsAt));
+  const paidUntil = access.paidUntil ? DAY_FORMAT.format(new Date(access.paidUntil)) : null;
 
   if (access.state === 'pro') {
     return (
       <div className="mt-5 flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-5 py-4">
         <Check className="h-5 w-5 shrink-0 text-success" />
-        <p className="text-[15px] text-ink">This workspace is on a paid plan.</p>
+        <p className="text-[15px] text-ink">
+          {paidUntil ? (
+            <>
+              This workspace is paid up to <strong>{paidUntil}</strong>
+              {access.daysLeft > 0 && <> — {access.daysLeft} days left</>}. Renewal is manual, so
+              pay again below before that date to keep it running.
+            </>
+          ) : (
+            <>This workspace is on a paid plan.</>
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  if (access.state === 'lapsed') {
+    return (
+      <div className="mt-5 flex gap-3 rounded-lg border border-danger bg-danger-soft px-5 py-4">
+        <Lock className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+        <p className="text-[15px] text-ink">
+          Your subscription ran out on <strong>{paidUntil}</strong>. Sending, uploading and editing
+          are paused until it is renewed. Documents you already sent can still be signed, and
+          everything already signed stays yours to download below.
+        </p>
       </div>
     );
   }
@@ -171,9 +198,9 @@ function StatusBanner({ access }: { access: TenantAccess }) {
       <div className="mt-5 flex gap-3 rounded-lg border border-danger bg-danger-soft px-5 py-4">
         <Lock className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
         <p className="text-[15px] text-ink">
-          Your {TRIAL_DAYS}-day free trial ended on <strong>{ends}</strong>. Sending, uploading and
-          editing are paused until this workspace is on a paid plan. Documents you already sent can
-          still be signed, and everything already signed stays yours to download below.
+          Your {TRIAL_DAYS}-day free trial ended on <strong>{trialEnds}</strong>. Sending, uploading
+          and editing are paused until this workspace is on a paid plan. Documents you already sent
+          can still be signed, and everything already signed stays yours to download below.
         </p>
       </div>
     );
@@ -184,9 +211,47 @@ function StatusBanner({ access }: { access: TenantAccess }) {
       <CircleAlert className="h-5 w-5 shrink-0 text-brand-link" />
       <p className="text-[15px] text-ink">
         Your free trial ends in <strong>{access.daysLeft}</strong> day
-        {access.daysLeft === 1 ? '' : 's'}, on {ends}.
+        {access.daysLeft === 1 ? '' : 's'}, on {trialEnds}.
       </p>
     </div>
+  );
+}
+
+/**
+ * What has been paid, and what each payment bought. Abandoned checkouts are
+ * left out: a `pending` row is someone who opened a payment page and closed
+ * it, which is not a fact worth putting in front of them as if it were a bill.
+ */
+function PaymentHistory({ payments }: { payments: Payment[] }) {
+  const settled = payments.filter((p) => p.status !== 'pending');
+  if (settled.length === 0) return null;
+
+  return (
+    <Card className="mt-6">
+      <CardHeader title="Payments" />
+      <div className="px-6 pb-6">
+        <ul className="divide-y divide-border">
+          {settled.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
+              <span className="font-medium text-ink">{formatSum(p.amountTiyin)}</span>
+              <span className="text-ink-muted capitalize">
+                {p.plan} · {p.provider}
+              </span>
+              <span className="ml-auto text-ink-muted">
+                {p.status === 'cancelled' ? (
+                  <span className="text-danger">Refunded</span>
+                ) : (
+                  <>
+                    Paid {p.paidAt && DAY_FORMAT.format(new Date(p.paidAt))}
+                    {p.periodEnd && <> · covers to {DAY_FORMAT.format(new Date(p.periodEnd))}</>}
+                  </>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
   );
 }
 

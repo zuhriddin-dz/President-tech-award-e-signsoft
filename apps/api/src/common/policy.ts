@@ -276,7 +276,12 @@ export class PolicyGuard implements CanActivate {
     // already signed. 402 with a code the shell branches on, not 403: this is
     // "pay to continue", not "you may never".
     if (auth.entitlement) {
-      const access = tenantAccess(auth.entitlement.plan, auth.entitlement.trialEndsAt, new Date());
+      const access = tenantAccess(
+        auth.entitlement.plan,
+        auth.entitlement.trialEndsAt,
+        auth.entitlement.paidUntil,
+        new Date(),
+      );
       const allowed = this.reflector.getAllAndOverride<boolean | undefined>(ALLOW_WHEN_LOCKED_KEY, [
         context.getHandler(),
         context.getClass(),

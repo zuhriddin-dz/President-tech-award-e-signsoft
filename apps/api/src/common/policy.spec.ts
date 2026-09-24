@@ -129,9 +129,30 @@ describe('default-deny policy guard', () => {
  */
 describe('trial gate', () => {
   const DAY = 86_400_000;
-  const ended = { plan: 'trial' as const, trialEndsAt: new Date(Date.now() - DAY) };
-  const running = { plan: 'trial' as const, trialEndsAt: new Date(Date.now() + 3 * DAY) };
-  const paid = { plan: 'pro' as const, trialEndsAt: new Date(Date.now() - 90 * DAY) };
+  const ended = { plan: 'trial' as const, trialEndsAt: new Date(Date.now() - DAY), paidUntil: null };
+  const running = {
+    plan: 'trial' as const,
+    trialEndsAt: new Date(Date.now() + 3 * DAY),
+    paidUntil: null,
+  };
+  // Granted by hand: pro with no paid period, so nothing can run out.
+  const paid = {
+    plan: 'pro' as const,
+    trialEndsAt: new Date(Date.now() - 90 * DAY),
+    paidUntil: null,
+  };
+  // Bought a month that has since run out — locked, like an ended trial.
+  const lapsed = {
+    plan: 'pro' as const,
+    trialEndsAt: new Date(Date.now() - 90 * DAY),
+    paidUntil: new Date(Date.now() - DAY),
+  };
+  // Paid, with time still on it.
+  const current = {
+    plan: 'pro' as const,
+    trialEndsAt: new Date(Date.now() - 90 * DAY),
+    paidUntil: new Date(Date.now() + 20 * DAY),
+  };
 
   it('refuses an ordinary route once the trial has ended — 402 with a code the shell reads', async () => {
     const err = await guardWith('OWNER', ended)
@@ -154,9 +175,33 @@ describe('trial gate', () => {
     ).resolves.toBe(true);
   });
 
-  it('never locks a pro workspace, whatever its old trial date says', async () => {
+  it('never locks a hand-granted pro workspace, whatever its old trial date says', async () => {
     await expect(
       guardWith('OWNER', paid).canActivate(contextFor(declared('member'), 'Bearer t')),
+    ).resolves.toBe(true);
+  });
+
+  it('lets a paid workspace with time left do everything', async () => {
+    await expect(
+      guardWith('OWNER', current).canActivate(contextFor(declared('member'), 'Bearer t')),
+    ).resolves.toBe(true);
+  });
+
+  it('locks a workspace whose PAID month ran out, not just an unpaid trial', async () => {
+    // Renewal is manual, so this is the ordinary end state of every customer
+    // who does not pay again — and the gate has to catch it.
+    const err = await guardWith('OWNER', lapsed)
+      .canActivate(contextFor(declared('member'), 'Bearer t'))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(402);
+  });
+
+  it('still lets a lapsed workspace reach what @AllowWhenLocked keeps open', async () => {
+    await expect(
+      guardWith('OWNER', lapsed).canActivate(
+        contextFor(declaredOpenWhenLocked('viewer'), 'Bearer t'),
+      ),
     ).resolves.toBe(true);
   });
 

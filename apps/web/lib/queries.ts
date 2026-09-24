@@ -3,9 +3,11 @@ import { cache } from 'react';
 import {
   API_PATHS,
   MeResponseSchema,
+  PaymentListSchema,
   SignatureRequestListSchema,
   TemplateListSchema,
   type MeResponse,
+  type Payment,
   type SignatureRequest,
   type TemplateSummary,
 } from '@docflow/contracts';
@@ -32,4 +34,14 @@ export const loadRequests = cache(async (): Promise<SignatureRequest[]> => {
 export const loadTemplates = cache(async (): Promise<TemplateSummary[]> => {
   const list = await apiGet(API_PATHS.templates, TemplateListSchema);
   return list?.templates ?? [];
+});
+
+/**
+ * What this workspace has paid. Admin-only upstream, so a member simply gets
+ * an empty history rather than an error — the plan cards above it are the
+ * point of the page, and they are the same for everyone.
+ */
+export const loadPayments = cache(async (): Promise<Payment[]> => {
+  const list = await apiGet(`${API_PATHS.billing}/payments`, PaymentListSchema);
+  return list?.payments ?? [];
 });

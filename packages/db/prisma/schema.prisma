@@ -32,13 +32,45 @@ enum TenantKind {
   @@map("tenant_kind")
 }
 
-// What a workspace is entitled to. `pro` is granted by hand today — there is no
-// payment processor, so nothing in the product can set it (scripts/set-plan.mjs).
+// What a workspace is entitled to. Set by a completed payment, or by hand for
+// a workspace we grant (scripts/set-plan.mjs).
+//
+// `pro` on its own does NOT mean "currently paid": it is read together with
+// trial_ends_at and paid_until. A hand-granted workspace is `pro` with a NULL
+// paid_until and never lapses.
 enum TenantPlan {
   trial
   pro
 
   @@map("tenant_plan")
+}
+
+// What can be bought, as opposed to TenantPlan, which is what is held.
+// Both grant `pro`; they differ in price and in what the marketing promises.
+enum BillingPlan {
+  personal
+  company
+
+  @@map("billing_plan")
+}
+
+// Who took the money. Both are Uzbek processors settling in so'm.
+enum PaymentProvider {
+  payme
+  click
+
+  @@map("payment_provider")
+}
+
+// A payment's life: `pending` from the moment we hand the customer over, then
+// exactly one of paid or cancelled. No `failed` state — a provider that never
+// comes back leaves the row pending for ever, which is the honest record.
+enum PaymentStatus {
+  pending
+  paid
+  cancelled
+
+  @@map("payment_status")
 }
 
 model Tenant {
@@ -56,6 +88,10 @@ model Tenant {
   // (ensure_tenant / ensure_personal_tenant), so a default written in
   // application code would never run for the rows that matter.
   trialEndsAt DateTime     @default(dbgenerated("(now() + interval '7 days')")) @map("trial_ends_at")
+  // End of the PAID period, extended by each completed payment. NULL means the
+  // workspace has never paid — including one granted `pro` by hand, which is
+  // why a NULL here never lapses rather than being treated as long expired.
+  paidUntil   DateTime?    @map("paid_until")
   memberships Membership[]
 
   @@map("tenants")
@@ -317,4 +353,56 @@ model Membership {
   @@unique([tenantId, userId])
   @@index([userId])
   @@map("memberships")
+}
+
+// One attempt to buy a month (or several) of `pro`.
+//
+// The row is written BEFORE the customer leaves for the provider, because the
+// provider identifies the purchase by this id and may call back about it at
+// any point afterwards — including about a purchase the customer abandoned.
+// Rows are never deleted: a cancelled payment is evidence that a card was
+// charged and refunded, and that is exactly the history a billing dispute
+// turns on.
+model Payment {
+  id       String      @id @default(uuid()) @db.Uuid
+  tenantId String      @default(dbgenerated("(NULLIF(current_setting('app.tenant_id'::text, true), ''::text))::uuid")) @map("tenant_id") @db.Uuid
+  plan     BillingPlan
+  provider PaymentProvider
+  // TIYIN, never so'm, and an integer, never a float — see PLAN_PRICE_TIYIN.
+  // Int tops out at 2 147 483 647 tiyin (≈21.4 million so'm), which is ~6x the
+  // largest purchase this table can currently hold (12 months of `company`).
+  // Widen to BigInt before a plan approaches that, not after.
+  amountTiyin Int           @map("amount_tiyin")
+  months      Int           @default(1)
+  status      PaymentStatus @default(pending)
+
+  // The provider's own identifier for the transaction — Payme's `id`, Click's
+  // `click_trans_id`. Unique per provider so a replayed callback can never be
+  // mistaken for a second, separate payment. NULL until the provider first
+  // tells us, and Postgres treats NULLs as distinct, so pending rows do not
+  // collide with one another.
+  providerTxnId String?   @map("provider_txn_id")
+  // When the PROVIDER says its transaction was created. Payme asks for this
+  // number back verbatim in CheckTransaction, so it is recorded rather than
+  // recomputed.
+  providerCreatedAt DateTime? @map("provider_created_at")
+  // The integer Click is handed at Prepare and echoes back at Complete; we
+  // refuse a Complete that does not quote the one we issued.
+  clickPrepareId Int? @map("click_prepare_id")
+
+  paidAt       DateTime? @map("paid_at")
+  cancelledAt  DateTime? @map("cancelled_at")
+  // The provider's own numeric reason for a cancellation, kept verbatim.
+  cancelReason Int?      @map("cancel_reason")
+
+  // What the money bought. Filled in when the payment completes, so the row
+  // records the period that was actually granted rather than the one that was
+  // hoped for at checkout.
+  periodStart DateTime? @map("period_start")
+  periodEnd   DateTime? @map("period_end")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@unique([provider, providerTxnId])
+  @@index([tenantId, createdAt])
+  @@map("payments")
 }

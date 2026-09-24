@@ -1,5 +1,5 @@
 import { notFound, redirect } from 'next/navigation';
-import { TemplateSchema, API_PATHS } from '@docflow/contracts';
+import { TemplateSchema, API_PATHS, accessLocked } from '@docflow/contracts';
 import { apiGet } from '@/lib/api';
 import { loadMe } from '@/lib/queries';
 import { TemplateEditor } from './editor';
@@ -19,7 +19,8 @@ export default async function TemplateEditorPage({
   params: Promise<{ id: string }>;
 }) {
   const me = await loadMe();
-  if (me.status === 'ok' && me.data.tenant?.access.state === 'ended') redirect('/billing');
+  const access = me.status === 'ok' ? me.data.tenant?.access : null;
+  if (access && accessLocked(access)) redirect('/billing');
 
   const { id } = await params;
   const template = await apiGet(`${API_PATHS.templates}/${id}`, TemplateSchema);
