@@ -15,11 +15,17 @@ import type { en } from './en';
  * calculate, which is the right word for what the demo is doing.
  */
 export const uz: typeof en = {
+  strip: {
+    text: '7 kunlik bepul sinov — karta kerak emas.',
+    cta: 'Tariflarni koʻrish',
+  },
+
   nav: {
-    why: 'Nega E-SIGNSOFT',
-    how: 'Qanday ishlaydi',
+    solutions: 'Yechimlar',
+    useCases: 'Foydalanish sohalari',
+    verify: 'Tekshirish',
     security: 'Xavfsizlik',
-    compare: 'Taqqoslash',
+    pricing: 'Narxlar',
   },
 
   header: {
@@ -40,21 +46,61 @@ export const uz: typeof en = {
     getStarted: 'Bepul boshlash',
     noCreditCard: 'Karta kerak emas. Imzolovchilarga account hech qachon kerak boʻlmaydi.',
     tryIt: 'Sinab koʻring — bitta raqamni oʻzgartiring',
+    proofs: ['Muhrlangan nusxa', 'Yakunlash sertifikati', 'Buzilishni tekshirish'],
   },
 
-  problem: {
-    heading: 'Qogʻozbozlik sekin va xavfli',
+  heroDoc: {
+    title: 'Xizmat koʻrsatish shartnomasi',
+    signedBy: 'Imzoladi',
+  },
+
+  solutions: {
+    heading: 'Qogʻozbozlik sekin va u hech narsani isbotlamaydi',
+    lede: 'Qogʻozdagi va pochtadagi imzo bilan toʻrtta narsa notoʻgʻri ketadi. Har birining oʻrniga nima kelishini koʻring.',
     chase: [
       'Chop et, imzola, skanerla, qidir',
-      'Har bir imzo — bu xatlar, printerlar va eslatmalar aylanmasi. Bitimlar qogʻozni kutadi.',
+      'Havola orqali bir necha daqiqada imzolanadi',
+      'Xavfsiz, bir martalik imzolash havolasini yuboring. Imzolovchi uni istalgan qurilmada brauzerda ochadi — account yaratish shart emas.',
     ],
     noProof: [
       'Oʻzgartirilmaganiga dalil yoʻq',
-      'Skanerlangan PDF oʻzgartirilishi mumkin va buni hech kim bilmaydi. Nizolar “menga ishoning”ga borib taqaladi.',
+      'Har kim tekshira oladigan muhrlangan nusxa',
+      'Har bir yakunlangan hujjatning barmoq izi olinadi va u muhrlanadi. Bitta bayt oʻzgarsa, tekshiruv oʻtmaydi — biz uchun ham, siz uchun ham, ikkinchi tomon uchun ham.',
+    ],
+    who: [
+      'Kim va qachon imzolaganini koʻrsatib boʻlmaydi',
+      'Yakunlash sertifikati',
+      'Ochilgan, rozilik berilgan, imzolangan — har biri vaqti va manzili bilan, sodir boʻlgan paytda qayd etiladi va hujjatga biriktiriladi.',
     ],
     scattered: [
       'Hech narsa tartibda emas',
-      'Imzolangan fayllar pochta va disklarga sochilib ketadi. Birontasini — yoki uning holatini — topish tergovga aylanadi.',
+      'Bitta panel, bitta holat',
+      'Yuborilgan, koʻrilgan, imzolangan, muddati tugayotgan — pochta va disklarga sochilmasdan, oʻzingiz tanlagan papkalarda.',
+    ],
+  },
+
+  useCases: {
+    heading: 'Qayerda ishlatiladi',
+    lede: 'Har safar oʻsha toʻrtta qadam. Faqat hujjat oʻzgaradi.',
+    hr: [
+      'HR',
+      'Ish taklifi xati',
+      'Nomzod fikridan qaytmasidan oldin taklifni telefonida imzolay oladigan qilib yuboring.',
+    ],
+    rent: [
+      'Koʻchmas mulk',
+      'Ijara shartnomasi',
+      'Ijarachi hali kvartirada turganida shartnomani imzolang.',
+    ],
+    sales: [
+      'Savdo',
+      'Savdo shartnomasi',
+      'Bitimni kelishilgan kuni yoping, kuryer kelgan haftada emas.',
+    ],
+    legal: [
+      'Yuridik',
+      'Oshkor qilmaslik shartnomasi',
+      'NDA’ni uchrashuv boshlanishidan oldin, kim imzolagani dalili bilan qaytaring.',
     ],
   },
 
@@ -72,6 +118,27 @@ export const uz: typeof en = {
     prove: [
       '4 · Isbotlash',
       'Imzolangan faylni va kriptografik muhrli Yakunlash sertifikatini oling.',
+    ],
+  },
+
+  verify: {
+    heading: 'Har kim tekshira oladi. Hech kim soxtalashtira olmaydi.',
+    lede: 'Hujjat imzolanganda uning barmoq izi olinadi. Istalgan nusxani istalgan vaqtda oʻsha iz bilan solishtiring — account kerak emas va fayl kompyuteringizdan chiqmaydi.',
+    fingerprint: [
+      'Barmoq izi imzolash paytida olinadi',
+      'Tayyor faylning SHA-256 qiymati yozuv bilan saqlanadi va sertifikatga chiqariladi.',
+    ],
+    seal: [
+      'Muhr bizniki, faqat bizniki',
+      'Ed25519 imzosi bu barmoq izini soʻrovga va imzolangan lahzaga bogʻlaydi.',
+    ],
+    open: [
+      'Tekshiruv ommaviy',
+      'Ikkinchi tomon accountsiz tekshiradi. Uning brauzeri barmoq izini hisoblaydi va faqat shuni yuboradi — hujjatni emas.',
+    ],
+    oneByte: [
+      'Bitta bayt kifoya',
+      'Oʻzgargan raqam, almashtirilgan sahifa, qayta saqlangan PDF — barchasi tekshiruvdan oʻtmaydi va buni koʻrib turasiz.',
     ],
   },
 
@@ -105,7 +172,32 @@ export const uz: typeof en = {
     audit: ['Audit izi', 'Qoʻlda', 'Avtomatik'],
     find: ['Imzolangan hujjatni topish', 'Pochtani qidirish', 'Bitta panel'],
     multiParty: ['Koʻp tomonlama imzolash', 'Har birini qidirish', 'Avtomatik yoʻnaltiriladi'],
-    cost: ['Bitta imzo narxi', 'Chop etish + pochta', 'Boshlash bepul'],
+    cost: ['Bitta imzo narxi', 'Chop etish + pochta', 'Tarifga kiradi'],
+  },
+
+  pricing: {
+    heading: 'Oddiy narxlar',
+    lede: '7 kunlik bepul sinovdan boshlang. Keyin nimani tanlasangiz ham, allaqachon imzolangan hujjatlaringiz sizniki boʻlib qoladi.',
+    personal: [
+      'Shaxsiy',
+      '$10',
+      'oyiga',
+      'Bir kishi uchun — imzoni ishonchli qiladigan hamma narsa.',
+    ],
+    company: [
+      'Kompaniya',
+      '$10 + $30',
+      'oyiga, har bir foydalanuvchi uchun',
+      'Rollar va haqiqiy audit izi bilan umumiy ish maydoni.',
+    ],
+    scale: [
+      'Scale',
+      'Biz bilan bogʻlaning',
+      'kelishuv boʻyicha',
+      'Buni boshqa tizimga ulashi kerak boʻlgan jamoalar uchun.',
+    ],
+    cta: 'Bepul sinovni boshlash',
+    note: 'Toʻlov tizimi hali ulanmagan — sinov ishlayapti va biror toʻlov olinishidan oldin sizdan shu yerda soʻraymiz.',
   },
 
   finalCta: {
@@ -117,6 +209,10 @@ export const uz: typeof en = {
   footer: {
     tagline: (year: number) =>
       `© ${year} E-SIGNSOFT — xavfsiz elektron imzo va hujjat aylanmasi`,
+    terms: 'Shartlar',
+    privacy: 'Maxfiylik',
+    verify: 'Hujjatni tekshirish',
+    help: 'Yordam',
   },
 
   proof: {

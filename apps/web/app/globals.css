@@ -101,6 +101,37 @@
   --font-sans:
     'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial,
     sans-serif;
+
+  /* ── The public landing page (2026-09) ────────────────────────────────
+     Its own palette: neutral black and white, with the magenta from the
+     LOGO as the single accent — the colour of the seal, used only where
+     proof happens. Deliberately separate from the sky-blue tokens above,
+     which still dress the signed-in product; the two meet nowhere.
+
+     Measured on white: seal carries white text at 5.08:1 (AA), quiet text
+     is 5.10:1, body-ink 11.7:1, night 19.3:1. Seal on night is 3.79:1 —
+     fine for a button shape, never for small text. contrast.spec.ts holds
+     these. */
+  --color-page: #ffffff;
+  --color-mist: #f5f5f5;
+  --color-hairline: #e2e2e2;
+  --color-quiet: #6e6e6e;
+  --color-body-ink: #383838;
+  --color-graphite: #1a1a1a;
+  --color-night: #0d0d0d;
+  --color-seal: #d4176a;
+  --color-seal-deep: #ad0f54;
+  --color-seal-soft: #fdeaf1;
+  /* "Valid" ON the dark cards. The product's --color-success is tuned for
+     white and measures about 2:1 on graphite — unreadable exactly where the
+     seal result is stated. This one is 9.4:1 there. */
+  --color-valid: #7ce0ab;
+
+  /* Loaded by next/font on the landing page only, so these resolve inside
+     that subtree and fall back to the app's own stack everywhere else. */
+  --font-display: var(--font-onest), 'Segoe UI Variable Display', system-ui, sans-serif;
+  --font-ui: var(--font-inter), 'Segoe UI', system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, 'Cascadia Mono', Consolas, monospace;
 }
 
 html,
@@ -113,6 +144,18 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* The landing page's motion is one thing — the seal rising off the paper —
+   and it is decorative. Anyone who has asked their system for less motion
+   gets the page still, with the seal lying flat where it belongs. */
+@media (prefers-reduced-motion: reduce) {
+  .landing-root *,
+  .landing-root *::before,
+  .landing-root *::after {
+    transition: none !important;
+    animation: none !important;
+  }
 }
 
 /* The document canvases scroll a lot — keep their scrollbars unobtrusive so

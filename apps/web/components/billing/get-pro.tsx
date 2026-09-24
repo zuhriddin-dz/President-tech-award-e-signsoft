@@ -35,8 +35,8 @@ interface Plan {
 const PLANS: readonly Plan[] = [
   {
     name: 'Personal',
-    price: '$0',
-    cadence: 'while in beta',
+    price: '$10',
+    cadence: 'per month',
     blurb: 'One person, everything that makes a signature hold up.',
     features: [
       'Unlimited documents and templates',
@@ -48,8 +48,8 @@ const PLANS: readonly Plan[] = [
   },
   {
     name: 'Company',
-    price: '$30',
-    cadence: 'per user / month',
+    price: '$10 + $30',
+    cadence: 'per month, per user',
     blurb: 'A shared workspace with a real audit trail.',
     highlight: true,
     features: [

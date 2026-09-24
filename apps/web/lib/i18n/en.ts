@@ -10,11 +10,18 @@
  * would then only compile if it equalled English word for word.
  */
 export const en = {
+  /** The black band above the header. One sentence and one link, nothing else. */
+  strip: {
+    text: '7-day free trial — no card needed.',
+    cta: 'See plans',
+  },
+
   nav: {
-    why: 'Why E-SIGNSOFT',
-    how: 'How it works',
+    solutions: 'Solutions',
+    useCases: 'Use cases',
+    verify: 'Verify',
     security: 'Security',
-    compare: 'Compare',
+    pricing: 'Pricing',
   },
 
   header: {
@@ -36,22 +43,72 @@ export const en = {
     getStarted: 'Get started free',
     noCreditCard: 'No credit card. Signers never need an account.',
     tryIt: 'Try it — change one number',
+    /** The three proof points under the hero copy. */
+    proofs: ['Sealed copy', 'Certificate of completion', 'Tamper check'] as [string, string, string],
   },
 
-  problem: {
-    heading: 'Paperwork is slow and risky',
+  /**
+   * The drawn contract in the hero — the sheet the seal is pressed into.
+   * Short strings on purpose: they sit inside a picture, not a paragraph.
+   */
+  heroDoc: {
+    title: 'Service agreement',
+    signedBy: 'Signed by',
+  },
+
+  /**
+   * What we solve. Each row is [the problem, our answer, how it works] — the
+   * problem sits quiet on the left, the answer carries the weight.
+   */
+  solutions: {
+    heading: 'Paperwork is slow, and it proves nothing',
+    lede: 'Four things go wrong with signatures on paper and in email. Here is what replaces each one.',
     chase: [
       'Print, sign, scan, chase',
-      'Every signature is a round-trip of emails, printers and reminders. Deals wait on paper.',
-    ] as [string, string],
+      'Signed in minutes, from a link',
+      'Email a secure, single-use signing link. The signer opens it in a browser, on any device, with no account to create.',
+    ] as [string, string, string],
     noProof: [
       'No proof it wasn’t changed',
-      'A scanned PDF can be altered and nobody can tell. Disputes come down to “trust me”.',
-    ] as [string, string],
+      'A sealed copy anyone can check',
+      'Every finished document is fingerprinted and sealed. Change one byte and the check fails — for us, for you, for the other side.',
+    ] as [string, string, string],
+    who: [
+      'You can’t show who signed, or when',
+      'A certificate of completion',
+      'Opened, agreed, signed — each with a time and an address, recorded as it happened and attached to the document.',
+    ] as [string, string, string],
     scattered: [
       'Nothing is organised',
-      'Signed files scatter across inboxes and drives. Finding one — or knowing its status — is a hunt.',
-    ] as [string, string],
+      'One dashboard, one status',
+      'Sent, viewed, signed, expiring — in folders you choose, instead of scattered across inboxes and drives.',
+    ] as [string, string, string],
+  },
+
+  /** The tabs under Use cases: [tab label, example document, why it matters]. */
+  useCases: {
+    heading: 'Where it is used',
+    lede: 'The same four steps every time. Only the document changes.',
+    hr: [
+      'HR',
+      'Offer letter',
+      'Send an offer the candidate can sign on their phone, before they change their mind.',
+    ] as [string, string, string],
+    rent: [
+      'Real estate',
+      'Lease agreement',
+      'Sign the lease with a tenant who is still standing in the flat.',
+    ] as [string, string, string],
+    sales: [
+      'Sales',
+      'Sales contract',
+      'Close the deal the day it is agreed, not the week the courier arrives.',
+    ] as [string, string, string],
+    legal: [
+      'Legal',
+      'Non-disclosure agreement',
+      'Get the NDA back before the meeting starts, with proof of who signed it.',
+    ] as [string, string, string],
   },
 
   how: {
@@ -68,6 +125,28 @@ export const en = {
     prove: [
       '4 · Prove',
       'Get the signed file plus a Certificate of Completion with a cryptographic seal.',
+    ] as [string, string],
+  },
+
+  /** The black band around the live hashing demo. */
+  verify: {
+    heading: 'Anyone can check it. Nobody can fake it.',
+    lede: 'A fingerprint is taken when the document is signed. Check any copy against it, any time — no account, and the file never leaves your computer.',
+    fingerprint: [
+      'The fingerprint is taken at signing',
+      'SHA-256 of the finished file, stored with the record and printed on the certificate.',
+    ] as [string, string],
+    seal: [
+      'The seal is ours, and only ours',
+      'An Ed25519 signature binds that fingerprint to the request and the moment it was signed.',
+    ] as [string, string],
+    open: [
+      'Checking is public',
+      'The other side verifies without an account. Their browser computes the fingerprint and sends only that — never the document.',
+    ] as [string, string],
+    oneByte: [
+      'One byte is enough',
+      'A changed figure, a swapped page, a re-saved PDF — all of it fails the check, visibly.',
     ] as [string, string],
   },
 
@@ -105,7 +184,33 @@ export const en = {
       'Chase each person',
       'Routed automatically',
     ] as [string, string, string],
-    cost: ['Cost per signature', 'Print + postage', 'Free to start'] as [string, string, string],
+    cost: ['Cost per signature', 'Print + postage', 'Included'] as [string, string, string],
+  },
+
+  /** Plans. Tuples are [name, price, cadence, who it is for]. */
+  pricing: {
+    heading: 'Simple pricing',
+    lede: 'Start with a 7-day free trial. Whatever you choose afterwards, documents you have already signed stay yours to download.',
+    personal: [
+      'Personal',
+      '$10',
+      'per month',
+      'One person, everything that makes a signature hold up.',
+    ] as [string, string, string, string],
+    company: [
+      'Company',
+      '$10 + $30',
+      'per month, per user',
+      'A shared workspace with roles and a real audit trail.',
+    ] as [string, string, string, string],
+    scale: [
+      'Scale',
+      'Talk to us',
+      'per agreement',
+      'For teams that need it wired into something else.',
+    ] as [string, string, string, string],
+    cta: 'Start free trial',
+    note: 'Billing is not open yet — the trial runs, and we will ask you here before anything is charged.',
   },
 
   finalCta: {
@@ -116,6 +221,10 @@ export const en = {
 
   footer: {
     tagline: (year: number) => `© ${year} E-SIGNSOFT — secure e-signature and document workflow`,
+    terms: 'Terms',
+    privacy: 'Privacy',
+    verify: 'Verify a document',
+    help: 'Help',
   },
 
   /**

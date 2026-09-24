@@ -132,6 +132,83 @@ describe('brand palette contrast', () => {
   });
 });
 
+/**
+ * The landing page's own palette: neutral black and white, with the magenta
+ * from the LOGO as the single accent. It is a separate set from the product's
+ * sky blue above, so it needs its own guard rail — the accent is the colour of
+ * every primary action on the page, and it is light enough that "just use it
+ * for text" would fail silently on white.
+ */
+describe('landing palette contrast', () => {
+  const PAGE = WEB['--color-page']!;
+  const NIGHT = WEB['--color-night']!;
+  const GRAPHITE = WEB['--color-graphite']!;
+  const SEAL = WEB['--color-seal']!;
+
+  it('carries white labels on the seal, in both its states', () => {
+    for (const token of ['--color-seal', '--color-seal-deep']) {
+      const ratio = contrastRatio(PAGE, WEB[token]!);
+      expect(ratio, `white on ${token} (${WEB[token]}) = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(
+        AA_TEXT,
+      );
+    }
+  });
+
+  it('reads every text tone on paper', () => {
+    for (const token of ['--color-night', '--color-body-ink', '--color-quiet']) {
+      const ratio = contrastRatio(WEB[token]!, PAGE);
+      expect(ratio, `${token} on paper = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  it('reads white on both dark grounds — the bands and the cards on them', () => {
+    for (const ground of [NIGHT, GRAPHITE]) {
+      const ratio = contrastRatio(PAGE, ground);
+      expect(ratio, `white on ${ground} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXT);
+    }
+  });
+
+  /**
+   * The seal button appears on the black bands too. It only has to read as a
+   * SHAPE there (its label is white on the fill, already checked above) — but
+   * that is exactly the check a light accent on a dark ground can fail.
+   */
+  it('keeps the seal button a distinguishable shape on a black band', () => {
+    const ratio = contrastRatio(SEAL, NIGHT);
+    expect(ratio, `seal on night = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_UI);
+  });
+
+  it('states a valid seal in a green that survives the dark card', () => {
+    // The product's success green is tuned for white and measures ~2:1 here,
+    // which is why the landing has its own. Both are asserted so a future
+    // edit cannot quietly swap one for the other.
+    const valid = contrastRatio(WEB['--color-valid']!, GRAPHITE);
+    expect(valid, `valid on graphite = ${valid.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXT);
+    expect(contrastRatio(WEB['--color-success']!, GRAPHITE)).toBeLessThan(AA_TEXT);
+  });
+
+  /**
+   * The drawn document shows placed fields in recipient colours, a few
+   * centimetres from the seal. Those two things mean different things — one is
+   * somebody's field, the other is our mark — so they must not look alike.
+   *
+   * Only the colours the landing actually draws are asserted, and that is the
+   * finding rather than a loophole: rc-2 (orange) and the seal's magenta
+   * converge under tritanopia (about 40 apart, under the 55 this set holds
+   * elsewhere), so the landing does not place them together. Adding rc-2 to an
+   * illustration means picking a different field colour, not relaxing this.
+   */
+  it('keeps the seal clear of the recipient colours drawn beside it', () => {
+    const kinds: Deficiency[] = ['protanopia', 'deuteranopia', 'tritanopia'];
+    for (const n of [1, 3]) {
+      for (const kind of kinds) {
+        const distance = rgbDistance(simulate(SEAL, kind), simulate(WEB[`--color-rc-${n}`]!, kind));
+        expect(distance, `seal vs rc-${n} under ${kind}`).toBeGreaterThan(SEPARATION);
+      }
+    }
+  });
+});
+
 describe('recipient field colours', () => {
   const RC = [1, 2, 3, 4, 5, 6].map((n) => WEB[`--color-rc-${n}`]!);
 
